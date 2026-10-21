@@ -126,39 +126,39 @@ Debian versions are the apt-installable value, from the
 | PHP | 8.2 | `8.2.35` | `8.2.35` | 2026-10-21 | :white_check_mark: Fixed |
 | Debian | sid — `php8.4` (default) | `8.4.26-1` | — | — | :x: Vulnerable — needs 8.4.27 |
 | Debian | forky (testing) — `php8.4` (default) | `8.4.26-1` | — | — | :x: Vulnerable — needs 8.4.27 |
-| Debian | 13 (trixie) — `php8.4` (default) | `8.4.26-1~deb13u1` | — | — | :x: Vulnerable — needs 8.4.27 |
-| Debian | 12 (bookworm) — `php8.2` (default) | `8.2.34-1~deb12u1` | — | — | :x: Vulnerable — needs 8.2.35 |
-| pkgsrc | `pkgsrc-current` — `php84` (default) | `php84-8.4.26nb2` | — | — | :x: Vulnerable — needs 8.4.27 |
-| pkgsrc | `pkgsrc-current` — `php85` | `php85-8.5.11nb2` | — | — | :x: Vulnerable — needs 8.5.12 |
-| pkgsrc | `pkgsrc-current` — `php83` | `php83-8.3.35nb2` | — | — | :x: Vulnerable — needs 8.3.36 |
-| pkgsrc | `pkgsrc-current` — `php82` | `php82-8.2.34nb2` | — | — | :x: Vulnerable — needs 8.2.35 |
-| pkgsrc | `pkgsrc-2026Q3` — `php84` (default) | `php84-8.4.26` | — | — | :x: Vulnerable — needs 8.4.27 |
-| pkgsrc | `pkgsrc-2026Q3` — `php85` | `php85-8.5.11` | — | — | :x: Vulnerable — needs 8.5.12 |
-| pkgsrc | `pkgsrc-2026Q3` — `php83` | `php83-8.3.35` | — | — | :x: Vulnerable — needs 8.3.36 |
-| pkgsrc | `pkgsrc-2026Q3` — `php82` | `php82-8.2.34` | — | — | :x: Vulnerable — needs 8.2.35 |
+| Debian | 13 (trixie) — `php8.4` (default) | `8.4.27-1~deb13u1` | `8.4.27-1~deb13u1` | 2026-10-21 | :white_check_mark: Fixed — DSA-6574-1 |
+| Debian | 12 (bookworm) — `php8.2` (default) | `8.2.35-1~deb12u1` | `8.2.35-1~deb12u1` | 2026-10-21 | :white_check_mark: Fixed — DLA-4848-1 |
+| pkgsrc | `pkgsrc-current` — `php84` (default) | `php84-8.4.27` | `php84-8.4.27` | 2026-10-21 | :white_check_mark: Fixed |
+| pkgsrc | `pkgsrc-current` — `php85` | `php85-8.5.12` | `php85-8.5.12` | 2026-10-21 | :white_check_mark: Fixed |
+| pkgsrc | `pkgsrc-current` — `php83` | `php83-8.3.36` | `php83-8.3.36` | 2026-10-21 | :white_check_mark: Fixed |
+| pkgsrc | `pkgsrc-current` — `php82` | `php82-8.2.35` | `php82-8.2.35` | 2026-10-21 | :white_check_mark: Fixed |
+| pkgsrc | `pkgsrc-2026Q3` — `php84` (default) | `php84-8.4.27` | `php84-8.4.27` | 2026-10-21 | :white_check_mark: Fixed — pullup #7309 |
+| pkgsrc | `pkgsrc-2026Q3` — `php85` | `php85-8.5.12` | `php85-8.5.12` | 2026-10-21 | :white_check_mark: Fixed — pullup #7310 |
+| pkgsrc | `pkgsrc-2026Q3` — `php83` | `php83-8.3.36` | `php83-8.3.36` | 2026-10-21 | :white_check_mark: Fixed — pullup #7308 |
+| pkgsrc | `pkgsrc-2026Q3` — `php82` | `php82-8.2.35` | `php82-8.2.35` | 2026-10-21 | :white_check_mark: Fixed — pullup #7307 |
 | NixOS | `nixos-unstable` — `php85` (default) | `8.5.11` | — | — | :x: Vulnerable — needs 8.5.12 |
 | NixOS | `nixos-unstable` — `php84` | `8.4.26` | — | — | :x: Vulnerable — needs 8.4.27 |
 | NixOS | `nixos-unstable` — `php83` | `8.3.35` | — | — | :x: Vulnerable — needs 8.3.36 |
 | NixOS | `nixos-unstable` — `php82` | `8.2.34` | — | — | :x: Vulnerable — needs 8.2.35 |
-| NixOS | `nixos-unstable-small` — `php85` (default) | `8.5.11` | — | — | :x: Vulnerable — needs 8.5.12 |
-| NixOS | `nixos-unstable-small` — `php84` | `8.4.26` | — | — | :x: Vulnerable — needs 8.4.27 |
-| NixOS | `nixos-unstable-small` — `php83` | `8.3.35` | — | — | :x: Vulnerable — needs 8.3.36 |
+| NixOS | `nixos-unstable-small` — `php85` (default) | `8.5.12` | `8.5.12` | 2026-10-21 | :white_check_mark: Fixed |
+| NixOS | `nixos-unstable-small` — `php84` | `8.4.27` | `8.4.27` | 2026-10-21 | :white_check_mark: Fixed |
+| NixOS | `nixos-unstable-small` — `php83` | `8.3.36` | `8.3.36` | 2026-10-21 | :white_check_mark: Fixed |
 | NixOS | `nixos-unstable-small` — `php82` | `8.2.34` | — | — | :x: Vulnerable — needs 8.2.35 |
 | NixOS | `nixos-26.05` — `php84` (default) | `8.4.26` | — | — | :x: Vulnerable — needs 8.4.27 |
 | NixOS | `nixos-26.05` — `php85` | `8.5.11` | — | — | :x: Vulnerable — needs 8.5.12 |
 | NixOS | `nixos-26.05` — `php83` | `8.3.35` | — | — | :x: Vulnerable — needs 8.3.36 |
 | NixOS | `nixos-26.05` — `php82` | `8.2.34` | — | — | :x: Vulnerable — needs 8.2.35 |
-| NixOS | `nixos-26.05-small` — `php84` (default) | `8.4.26` | — | — | :x: Vulnerable — needs 8.4.27 |
-| NixOS | `nixos-26.05-small` — `php85` | `8.5.11` | — | — | :x: Vulnerable — needs 8.5.12 |
-| NixOS | `nixos-26.05-small` — `php83` | `8.3.35` | — | — | :x: Vulnerable — needs 8.3.36 |
-| NixOS | `nixos-26.05-small` — `php82` | `8.2.34` | — | — | :x: Vulnerable — needs 8.2.35 |
-| nixpkgs | `master` branch — `php85` (default) | `8.5.11` | — | — | :x: Vulnerable — needs 8.5.12 |
-| nixpkgs | `master` branch — `php84` | `8.4.26` | — | — | :x: Vulnerable — needs 8.4.27 |
-| nixpkgs | `master` branch — `php83` | `8.3.35` | — | — | :x: Vulnerable — needs 8.3.36 |
-| nixpkgs | `release-26.05` branch — `php84` (default) | `8.4.26` | — | — | :x: Vulnerable — needs 8.4.27 |
-| nixpkgs | `release-26.05` branch — `php85` | `8.5.11` | — | — | :x: Vulnerable — needs 8.5.12 |
-| nixpkgs | `release-26.05` branch — `php83` | `8.3.35` | — | — | :x: Vulnerable — needs 8.3.36 |
-| nixpkgs | `release-26.05` branch — `php82` | `8.2.34` | — | — | :x: Vulnerable — needs 8.2.35 |
+| NixOS | `nixos-26.05-small` — `php84` (default) | `8.4.27` | `8.4.27` | 2026-10-21 | :white_check_mark: Fixed |
+| NixOS | `nixos-26.05-small` — `php85` | `8.5.12` | `8.5.12` | 2026-10-21 | :white_check_mark: Fixed |
+| NixOS | `nixos-26.05-small` — `php83` | `8.3.36` | `8.3.36` | 2026-10-21 | :white_check_mark: Fixed |
+| NixOS | `nixos-26.05-small` — `php82` | `8.2.35` | `8.2.35` | 2026-10-21 | :white_check_mark: Fixed |
+| nixpkgs | `master` branch — `php85` (default) | `8.5.12` | `8.5.12` | 2026-10-21 | :white_check_mark: Fixed |
+| nixpkgs | `master` branch — `php84` | `8.4.27` | `8.4.27` | 2026-10-21 | :white_check_mark: Fixed |
+| nixpkgs | `master` branch — `php83` | `8.3.36` | `8.3.36` | 2026-10-21 | :white_check_mark: Fixed |
+| nixpkgs | `release-26.05` branch — `php84` (default) | `8.4.27` | `8.4.27` | 2026-10-21 | :white_check_mark: Fixed |
+| nixpkgs | `release-26.05` branch — `php85` | `8.5.12` | `8.5.12` | 2026-10-21 | :white_check_mark: Fixed |
+| nixpkgs | `release-26.05` branch — `php83` | `8.3.36` | `8.3.36` | 2026-10-21 | :white_check_mark: Fixed |
+| nixpkgs | `release-26.05` branch — `php82` | `8.2.35` | `8.2.35` | 2026-10-21 | :white_check_mark: Fixed |
 | nixpkgs | `nixpkgs-unstable` — `php85` (default) | `8.5.11` | — | — | :x: Vulnerable — needs 8.5.12 |
 | nixpkgs | `nixpkgs-unstable` — `php84` | `8.4.26` | — | — | :x: Vulnerable — needs 8.4.27 |
 | nixpkgs | `nixpkgs-unstable` — `php83` | `8.3.35` | — | — | :x: Vulnerable — needs 8.3.36 |
@@ -212,9 +212,11 @@ nixpkgs builds every branch from one expression,
 and `php84` on 26.05. The NixOS `services.phpfpm` module uses
 `pkgs.php` unless a pool sets its own `phpPackage`.
 
-`master` no longer has `php82`: PHP 8.2 was removed from unstable on
-2026-10-21, so the unstable channels will drop it as they advance. A
-host on `php82` from unstable will have to move to a newer branch.
+PHP 8.2 was removed from unstable on 2026-10-21, after its last
+release there: `master` and `nixos-unstable-small` no longer carry
+`php82`, and `nixos-unstable` and `nixpkgs-unstable` will drop it as
+they advance. A host on `php82` from unstable gets no fix and has to
+move to a newer branch.
 
 #### Flake users
 
@@ -385,7 +387,10 @@ reproduced. Most readers never need it.
     matching its advisory's CVSS 4.0 vector and CWEs.
   - The record credits Ryan at Calif.io and Wiz as reporters and
     OpenAI as finder.
-  - CVE-2026-109619 has no published record yet; the API returns 404.
+  - CVE-2026-109619 published 2026-10-21T13:54:43Z by the PHP CNA,
+    matching its advisory's CVSS 4.0 vector and CWEs.
+  - The CVE-2026-109619 record credits Wiz, Ryan at Calif.io, and
+    OpenAI as reporters.
 - **KEV**: neither CVE ID is in CISA's catalog.
 - **Exploitation** (via [Sansec][sansec] and
   [SecurityWeek][securityweek]):
@@ -409,14 +414,30 @@ reproduced. Most readers never need it.
   - *Current version* is each suite's apt-installable version;
     `trixie-security` and `bookworm-security` carry newer versions
     than the main archive.
-  - No tracked advisory id in any changelog entry.
+  - The `trixie-security` and `bookworm-security` uploads name both
+    CVEs in their changelog entry for the new upstream release.
+  - sid and forky: no tracked advisory id in any changelog entry.
 - **Debian security tracker** (per-CVE pages):
-  - Neither CVE has a page yet.
+  - trixie fixed by DSA-6574-1 and bookworm by DLA-4848-1, both
+    covering CVE-2026-109618 and CVE-2026-109619.
+  - sid and forky still listed vulnerable, with Debian bug 1151516
+    filed against `php8.4` for unstable.
+- **Debian fix dates** (changelog trailers on tracker.debian.org,
+  cross-checked with snapshot.debian.org's `first_seen`):
+  - trixie: the `8.4.27-1~deb13u1` upload, 2026-10-21; first seen in
+    `debian-security` at 13:41 UTC.
+  - bookworm: the `8.2.35-1~deb12u1` LTS upload, 2026-10-21; first
+    seen in `debian-security` at 14:03 UTC.
 - **pkgsrc** (via `scripts/pkgsrc-versions` against the local clone):
   - Versions from `lang/php/phpversion.mk`; `PHP_VERSION_DEFAULT` 84
     on both branches.
   - No tracked advisory id in any `patches/` directory on either
     branch.
+  - `pkgsrc-current`: `lang/php82` … `lang/php85` updated to the
+    fixed releases on 2026-10-21 (commits `61a8fd285d89`,
+    `81523dc73c3b`, `626f1e402f79`, `38031f5b8cc1`).
+  - `pkgsrc-2026Q3`: pullup tickets #7307 (`php82`), #7308 (`php83`),
+    #7309 (`php84`), and #7310 (`php85`), committed 2026-10-21.
 - **NixOS / nixpkgs** (via `scripts/nixpkgs-versions` against the
   local clone at each channel's revision pointer):
   - Versions from the `php82` … `php85` blocks of
@@ -427,6 +448,16 @@ reproduced. Most readers never need it.
   - `php82` was removed from `master` on 2026-10-21, in merge
     `00e46e05` (nixpkgs#575757).
   - No tracked advisory id in `default.nix` or `generic.nix`.
+  - `master`: the bump for `php83`, `php84`, and `php85` landed on
+    2026-10-21 in merge `c53532a93865` (nixpkgs#576853).
+  - `release-26.05`: the bump for all four branches landed on
+    2026-10-21 in merge `8c259fc0dd1f` (nixpkgs#576865).
+  - `nixos-unstable-small`: first shipped the fix in release
+    `nixos-26.11pre1098711.c53532a93865`, 2026-10-21, which no longer
+    carries `php82` (via `scripts/nixos-first-shipped`).
+  - `nixos-26.05-small`: first shipped the fix in release
+    `nixos-26.05.12372.8c259fc0dd1f`, 2026-10-21 (via
+    `scripts/nixos-first-shipped`).
 - **NixOS security tracker** ([tracker.security.nixos.org][nixos-sec])
   — a JS-rendered application, linked for readers.
 {{< /details >}}
