@@ -1,0 +1,9 @@
+# Advisory ids fixed by the PHP 2026-10-21 releases (8.2.35, 8.3.36,
+# 8.4.27, 8.5.12) -- the PHP2Shell pair.  The lookup helpers search
+# distro patches and changelogs for these, one fixed string per line;
+# '#' lines and blank lines are ignored.  Keep in step with the
+# vulnerabilities table in site/content/_index.md.
+CVE-2026-109618
+CVE-2026-109619
+GHSA-6wmf-4rv5-p3rp
+GHSA-w8hw-w9fx-j79w

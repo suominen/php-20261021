@@ -1,0 +1,333 @@
+#!/bin/sh
+# @(#)$KimmoSuominen$
+#
+# Report the PHP version each tracked NixOS / nixpkgs channel pins for
+# every php8x attribute, which one is the default `php`, and any
+# tracked advisory ids the expressions name.
+#
+# 20260925  Kimmo Suominen
+#
+
+set -eu
+
+PATH=/bin:/usr/bin:/usr/local/bin:/usr/pkg/bin
+export PATH
+
+PROG="${0##*/}"
+
+NIXPKGS="${HOME}/src/nixos/nixpkgs"
+CHANNEL_URL='https://channels.nixos.org'
+CHANNELS='branch:master branch:release-26.05 nixos-unstable-small'
+CHANNELS="${CHANNELS} nixos-unstable nixos-26.05-small nixos-26.05"
+CHANNELS="${CHANNELS} nixpkgs-unstable"
+ATTRS='php85 php84 php83 php82'
+PHP_DIR='pkgs/development/interpreters/php'
+TOP='pkgs/top-level/all-packages.nix'
+IDS="${0%/*}/tracked-ids"
+CURL_OPTS='--connect-timeout 15 --max-time 60 --retry 2'
+
+die()
+{
+    echo "${PROG}: ${*}" 1>&2
+    exit 1
+}
+
+warn()
+{
+    echo "${PROG}: warning: ${*}" 1>&2
+}
+
+usage()
+{
+    cat <<EOF
+Usage:	${PROG} [-h] [-c url] [-i file] [-r repo] [channel ...]
+
+Print one tab-separated line per tracked channel and php8x attribute,
+the default attribute first, then the others descending:
+
+	<channel> <attribute> <php> <default|-> <ids|->
+
+nixpkgs defines every PHP branch in ${PHP_DIR}/default.nix
+as a \`phpXY = mkPhp { version = ...; }\` block; <php> is that
+version. <default> marks the attribute \`php\` points at in
+${TOP}.
+
+The last column lists the tracked advisory ids (one per line in the
+ids file, default: tracked-ids next to this script) named inside the
+attribute's mkPhp block, then, each prefixed \`generic:\`, those named
+elsewhere in default.nix or in generic.nix -- code every branch
+shares, where a patch may still be gated to some versions -- or \`-\`
+when none is. A release branch can ship a fix as a patch on an older
+base rather than as a version bump; only a patch named after the id
+is seen, so read the expression before calling a row either way.
+
+An attribute a revision does not define prints \`-\` in every field
+and \`absent\` in the last. A default attribute that is missing, or
+any defined one whose version cannot be read or does not belong to
+its branch, is an error. A clone not fetched in the last 24 hours
+draws a warning, since its branch rows may be stale.
+
+A channel whose pointer names a commit the clone does not have yet
+prints every attribute the same way, but with \`unresolved\` in the
+last field and in plain attribute order, since neither the versions
+nor the default can be read. The other channels still print, and the
+script then exits 3 rather than 0: the channel moved past the clone's
+last fetch, so fetch it and rerun. It does not mean an attribute left
+the channel. A pointer that is not a commit id at all is an error.
+Errors exit 1, even after some rows have printed.
+
+Channel revisions are read from the channel's git-revision pointer and
+resolved in the local clone, which is never fetched here; refresh it
+yourself, or let the auto-update wrapper do it.
+
+An argument of the form branch:<name> reads the tip of that git branch
+instead of a channel pointer -- use it for the ungated branches a flake
+input can pin, e.g. branch:master or branch:release-XX.YY.
+
+Options:
+-c	Base URL of the channel pointers (default: ${CHANNEL_URL})
+-h	Show this help
+-i	File listing the tracked ids (default: ${IDS})
+-r	Path to the local nixpkgs clone (default: ${NIXPKGS})
+EOF
+}
+
+# Print an attribute's mkPhp block from default.nix text, or nothing.
+# The block ends at the first `};` indented like its opening line, so a
+# nested attrset's own `};` does not end it early.
+attr_block()
+{
+    local text attr
+    text="${1}"
+    attr="${2}"
+
+    printf '%s\n' "${text}" |
+    awk -v attr="${attr}" '
+	!inblock && $0 ~ "^[ \t]*" attr "[ \t]*=[ \t]*mkPhp" {
+	    inblock = 1
+	    indent = $0
+	    sub(/[^ \t].*/, "", indent)
+	}
+	inblock {
+	    print
+	}
+	inblock && $0 ~ "^" indent "};[ \t]*$" {
+	    exit
+	}'
+}
+
+# Print default.nix text with every phpXY mkPhp block removed.
+outside_blocks()
+{
+    printf '%s\n' "${1}" |
+    awk '
+	!inblock && /^[ \t]*php[0-9]+[ \t]*=[ \t]*mkPhp/ {
+	    inblock = 1
+	    indent = $0
+	    sub(/[^ \t].*/, "", indent)
+	}
+	!inblock {
+	    print
+	}
+	inblock && $0 ~ "^" indent "};[ \t]*$" {
+	    inblock = 0
+	}'
+}
+
+# Print the tracked ids found in the given text, one per line, sorted.
+# -w keeps CVE-2026-6103 from matching inside CVE-2026-61030.
+ids_in()
+{
+    printf '%s\n' "${1}" |
+    grep -o -w -F -f "${pattern_file}" |
+    sort -u
+}
+
+# Join a block's ids and the generic:-prefixed shared ids with commas,
+# or print `-`.
+id_column()
+{
+    local found
+    found="$({
+	ids_in "${1}"
+	ids_in "${2}" | sed 's/^/generic:/'
+    } | paste -s -d , -)"
+
+    echo "${found:--}"
+}
+
+while getopts c:hi:r: opt
+do
+    case "${opt}" in
+    c)  CHANNEL_URL="${OPTARG}";;
+    h)  usage; exit 0;;
+    i)  IDS="${OPTARG}";;
+    r)  NIXPKGS="${OPTARG}";;
+    *)  usage 1>&2; exit 2;;
+    esac
+done
+shift $((${OPTIND} - 1))
+
+if [ $# -gt 0 ]
+then
+    CHANNELS="${*}"
+fi
+
+command -v curl > /dev/null ||
+die 'curl is required'
+
+command -v git > /dev/null ||
+die 'git is required'
+
+[ -r "${IDS}" ] ||
+die "Cannot read ${IDS}"
+
+git -C "${NIXPKGS}" rev-parse --git-dir > /dev/null 2>&1 ||
+die "Not a git clone: ${NIXPKGS}"
+
+# The wrapper fetches the clone before each scheduled run; a stale one
+# still resolves branch:... rows, just to an old tip.
+gitdir="$(git -C "${NIXPKGS}" rev-parse --absolute-git-dir)"
+if [ -z "$(find "${gitdir}/FETCH_HEAD" -mmin -1440 2> /dev/null)" ]
+then
+    warn "${NIXPKGS} not fetched in the last 24 hours;" \
+	'branch rows may be stale'
+fi
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT INT TERM HUP
+
+pattern_file="${tmp}/ids"
+grep -v -e '^#' -e '^[ 	]*$' "${IDS}" > "${pattern_file}" ||
+die "No ids in ${IDS}"
+
+status=0
+
+for channel in ${CHANNELS}
+do
+    case "${channel}" in
+    branch:*)
+	# An ungated git branch, which is what a flake input pinned to
+	# github:NixOS/nixpkgs/<branch> resolves to. It has no channel
+	# pointer -- the branch tip is the revision.
+	ref="origin/${channel#branch:}"
+	rev="$(git -C "${NIXPKGS}" rev-parse --verify --quiet \
+	    "${ref}^{commit}")" ||
+	die "No such branch in ${NIXPKGS}: ${ref}"
+	;;
+    *)
+	# The pointer 302s to releases.nixos.org, hence -L.
+	rev="$(curl -fsSL ${CURL_OPTS} \
+	    "${CHANNEL_URL}/${channel}/git-revision")" ||
+	die "Cannot read the channel pointer for ${channel}"
+	# Only a full commit id may count as unresolved below: an error
+	# page served with a 200, or a ref name that happens to resolve
+	# in the clone, must not pass for a channel revision.
+	case "${rev}" in
+	*[!0-9a-f]*|'')
+	    die "The channel pointer for ${channel} is not a commit id"
+	    ;;
+	esac
+	if [ "${#rev}" -ne 40 ]
+	then
+	    die "The channel pointer for ${channel} is not a commit id"
+	fi
+	;;
+    esac
+
+    # A channel pointer can move past the clone's last fetch -- the
+    # wrapper skips the fetch when another tracker made one recently.
+    # Report it and carry on, so the other channels still print.
+    if ! git -C "${NIXPKGS}" cat-file -e "${rev}^{commit}" 2> /dev/null
+    then
+	warn "Revision ${rev} of ${channel} is not in ${NIXPKGS};" \
+	    'fetch the clone and retry'
+	for attr in ${ATTRS}
+	do
+	    printf '%s\t%s\t-\t-\tunresolved\n' "${channel}" "${attr}"
+	done
+	status=3
+	continue
+    fi
+
+    versions="$(git -C "${NIXPKGS}" show \
+	"${rev}:${PHP_DIR}/default.nix" 2> /dev/null)" ||
+    die "Cannot read ${PHP_DIR}/default.nix at ${channel}"
+
+    generic="$(git -C "${NIXPKGS}" show \
+	"${rev}:${PHP_DIR}/generic.nix" 2> /dev/null)" ||
+    generic=
+    generic="$(outside_blocks "${versions}")
+${generic}"
+
+    # Only the top-level binding (two-space indent) sets the default;
+    # a `php = ...` argument inside some package's call does not.
+    default="$(git -C "${NIXPKGS}" show "${rev}:${TOP}" 2> /dev/null |
+	sed -n 's/^  php = \(php[0-9][0-9]*\);[ 	]*$/\1/p' |
+	sort -u)"
+    case "${default}" in
+    '')
+	die "Cannot find the default php in ${TOP} at ${channel}"
+	;;
+    *"
+"*)
+	die "More than one default php in ${TOP} at ${channel}"
+	;;
+    esac
+
+    order="${default}"
+    for attr in ${ATTRS}
+    do
+	if [ "${attr}" != "${default}" ]
+	then
+	    order="${order} ${attr}"
+	fi
+    done
+
+    for attr in ${order}
+    do
+	if ! printf '%s\n' "${versions}" |
+	    grep -q "^[ 	]*${attr}[ 	]*="
+	then
+	    if [ "${attr}" = "${default}" ]
+	    then
+		die "The default ${attr} is not defined at ${channel}"
+	    fi
+	    printf '%s\t%s\t-\t-\tabsent\n' "${channel}" "${attr}"
+	    continue
+	fi
+
+	block="$(attr_block "${versions}" "${attr}")"
+	version="$(printf '%s\n' "${block}" |
+	    sed -n 's/^[ 	]*version[ 	]*=[ 	]*"\([^"]*\)".*/\1/p' |
+	    sed -n 1p)"
+
+	# php84 must pin an 8.4 release: anything else means the block
+	# was misread, not that nixpkgs ships a different branch.
+	digits="${attr#php}"
+	case "${version}" in
+	"${digits%?}.${digits#?}".*)
+	    ;;
+	*)
+	    die "Cannot read ${attr}'s version at ${channel}" \
+		"(got '${version}')"
+	    ;;
+	esac
+
+	if [ "${attr}" = "${default}" ]
+	then
+	    flag=default
+	else
+	    flag=-
+	fi
+
+	# Assign first: a failure inside a substitution used as a printf
+	# argument would be swallowed, printing a row with no ids.
+	ids="$(id_column "${block}" "${generic}")"
+
+	printf '%s\t%s\t%s\t%s\t%s\n' \
+	    "${channel}" "${attr}" "${version}" "${flag}" "${ids}"
+    done
+done
+
+exit "${status}"

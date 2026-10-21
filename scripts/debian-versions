@@ -1,0 +1,360 @@
+#!/bin/sh
+# @(#)$KimmoSuominen$
+#
+# Report, for each tracked Debian suite, every php8.x source it
+# carries: the package version, the upstream PHP release it packages
+# (from the changelog), whether it is the suite's default PHP, and any
+# tracked advisory ids backported on top of that release.
+#
+# 20260925  Kimmo Suominen
+#
+
+set -eu
+
+PATH=/bin:/usr/bin:/usr/local/bin:/usr/pkg/bin
+export PATH
+
+PROG="${0##*/}"
+
+SECURITY_URL='https://security-tracker.debian.org'
+PTS_URL='https://tracker.debian.org'
+FTP_URL='https://metadata.ftp-master.debian.org'
+SOURCES_URL='https://sources.debian.org'
+SUITES='sid forky trixie bookworm'
+PHP_SOURCES='php8.5 php8.4 php8.3 php8.2'
+IDS="${0%/*}/tracked-ids"
+UPSTREAM_RE='New upstream version \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)'
+
+TAB='	'
+
+# Bound every request: the unattended run must not hang on one
+# stalled connection.
+CURL_OPTS='--connect-timeout 15 --max-time 120 --retry 2'
+
+die()
+{
+    echo "${PROG}: ${*}" 1>&2
+    exit 1
+}
+
+warn()
+{
+    echo "${PROG}: ${*}" 1>&2
+}
+
+usage()
+{
+    cat <<EOF
+Usage:	${PROG} [-h] [-D url] [-F url] [-i file] [-S url] [-T url]
+
+Print one tab-separated line per tracked Debian suite and php8.x
+source the suite carries, the suite's default PHP first:
+
+	<suite> <source> <version> <php> <default|-> <ids|->
+
+<suite> is \`<suite>-security\` when the security archive carries the
+source at a newer version than the main archive (it is what hosts
+install, and where a DSA or DLA fix lands first), otherwise the plain
+suite -- a point release can also leave the main archive ahead. When
+both archives hold the same version the tracker lists only the plain
+suite, and so does this script. Versions come from
+the security tracker's source-package pages, which cover both
+archives; comparing them takes dpkg, which must be on the host (this
+script sets its own PATH).
+
+<php> is the upstream PHP release the package builds, read from the
+newest \`New upstream version X.Y.Z\` line of that version's
+changelog (tracker.debian.org, falling back to ftp-master's
+metadata), and cross-checked against the upstream part of the
+package version. The last column lists the tracked advisory ids (one
+per line in the ids file, default: tracked-ids next to this script)
+named in the changelog *above* that line, i.e. patches backported onto
+that release, or \`-\` when none is; the lines below it in the same
+entry are the release's own fix list and do not count. An unreadable
+changelog, or one whose upstream line disagrees with the package
+version, prints \`?\` in both columns and a warning; a changelog with
+no upstream line prints \`?\` for <php>.
+
+<default> marks the branch php-defaults' debian/rules sets as
+PHP_DEFAULT_VERSION for the suite -- what the unversioned \`php\`
+packages install. A suite whose default source it cannot find is an
+error. A source the security tracker has no page for (never in
+Debian) is skipped; any other failure to fetch is an error.
+
+Options:
+-D	Base URL of sources.debian.org (default: ${SOURCES_URL})
+-F	Base URL of ftp-master metadata (default: ${FTP_URL})
+-h	Show this help
+-i	File listing the tracked ids (default: ${IDS})
+-S	Base URL of the security tracker (default: ${SECURITY_URL})
+-T	Base URL of tracker.debian.org (default: ${PTS_URL})
+EOF
+}
+
+# Fetch a URL into a file.  Succeed on a page, fail quietly (status 1)
+# when the page does not exist, and die on anything else, so a network
+# failure never reads as "not in Debian".
+fetch()
+{
+    local url out code rc
+    url="${1}"
+    out="${2}"
+
+    rc=0
+    code="$(curl -sSL ${CURL_OPTS} -o "${out}" -w '%{http_code}' \
+	"${url}")" || rc=$?
+
+    case "${rc}:${code}" in
+    0:2??)
+	return 0
+	;;
+    0:404)
+	return 1
+	;;
+    *)
+	die "Cannot fetch ${url} (curl status ${rc}, HTTP ${code})"
+	;;
+    esac
+}
+
+# Print "<suite>TAB<version>" rows from a security-tracker
+# source-package page's Available versions table.  The page is one
+# long line; split it at each row first.
+suite_rows()
+{
+    sed 's/<tr>/\
+<tr>/g' "${1}" |
+    sed -n "s|^<tr><td>\\([a-z][a-z]*\\( (security)\\)\\{0,1\\}\\)</td><td>\\([^<]*\\)</td></tr>.*|\\1${TAB}\\3|p"
+}
+
+# Print the one version a suite row gives, or nothing; die if the page
+# lists the row more than once.
+row_version()
+{
+    local rows_file label ver
+    rows_file="${1}"
+    label="${2}"
+
+    ver="$(sed -n "s/^${label}${TAB}//p" "${rows_file}")"
+    case "${ver}" in
+    *"
+"*)
+	die "More than one \`${label}' row in ${rows_file##*/rows-}"
+	;;
+    esac
+    echo "${ver}"
+}
+
+# Print "<label>TAB<version>" for the version a suite runs, from
+# suite_rows output: the newer of the security archive's and the plain
+# suite's, the security archive's when they are equal.
+suite_version()
+{
+    local rows_file suite sec plain
+    rows_file="${1}"
+    suite="${2}"
+
+    sec="$(row_version "${rows_file}" "${suite} (security)")"
+    plain="$(row_version "${rows_file}" "${suite}")"
+
+    if [ -n "${sec}" ] && [ -n "${plain}" ] && [ "${sec}" != "${plain}" ]
+    then
+	command -v dpkg > /dev/null ||
+	die "dpkg is required to compare ${suite} versions"
+	if dpkg --compare-versions "${plain}" gt "${sec}"
+	then
+	    sec=
+	fi
+    fi
+
+    if [ -n "${sec}" ]
+    then
+	echo "${suite}-security${TAB}${sec}"
+    elif [ -n "${plain}" ]
+    then
+	echo "${suite}${TAB}${plain}"
+    fi
+}
+
+# Print PHP_DEFAULT_VERSION for a php-defaults version (e.g. 8.4).
+default_branch()
+{
+    local ver out branch
+    ver="${1}"
+    out="${tmp}/rules-${ver}"
+
+    if [ ! -f "${out}" ]
+    then
+	fetch "${SOURCES_URL}/data/main/p/php-defaults/${ver}/debian/rules" \
+	    "${out}" ||
+	die "No debian/rules for php-defaults ${ver}"
+    fi
+
+    branch="$(sed -n \
+	's/^PHP_DEFAULT_VERSION[ 	]*:*=[ 	]*\([0-9][0-9.]*\).*/\1/p' \
+	"${out}" | sed -n 1p)"
+    [ -n "${branch}" ] ||
+    die "No PHP_DEFAULT_VERSION in php-defaults ${ver} debian/rules"
+
+    echo "${branch}"
+}
+
+# Fetch a source version's changelog to a file; fail if neither
+# tracker.debian.org nor ftp-master has it.  tracker.debian.org drops
+# the characters it cannot put in a file name (~ and +) from the
+# version; ftp-master only covers the main archive.
+changelog()
+{
+    local src ver out clean
+    src="${1}"
+    ver="${2}"
+    out="${3}"
+
+    # Both drop the epoch; neither PHP source has one today.
+    ver="${ver#*:}"
+    clean="$(printf '%s\n' "${ver}" | tr -d '~+')"
+    fetch "${PTS_URL}/media/packages/p/${src}/changelog-${clean}" \
+	"${out}" && return 0
+    fetch "${FTP_URL}/changelogs/main/p/${src}/${src}_${ver}_changelog" \
+	"${out}"
+}
+
+# Print "<php>TAB<ids>" for a changelog file of a package version.
+changelog_facts()
+{
+    local file ver upstream level above found
+    file="${1}"
+    ver="${2}"
+
+    level="$(sed -n "s/.*${UPSTREAM_RE}.*/\\1/p" "${file}" | sed -n 1p)"
+
+    # A level that is not the package's own upstream version means the
+    # newest entry is worded some other way and an older entry's line
+    # was found instead; everything between would read as backports.
+    upstream="${ver#*:}"
+    upstream="${upstream%-*}"
+    if [ -n "${level}" ] && [ "${level}" != "${upstream}" ]
+    then
+	warn "Changelog of ${ver}: newest upstream line names ${level}"
+	printf '?\t?\n'
+	return 0
+    fi
+
+    # Everything before the first upstream line: backports on top of
+    # that release.  Without an upstream line, the whole file.
+    above="$(sed "/${UPSTREAM_RE}/,\$d" "${file}")"
+    found="$(printf '%s\n' "${above}" |
+	grep -o -w -F -f "${pattern_file}" | sort -u | paste -s -d , -)"
+
+    printf '%s\t%s\n' "${level:-?}" "${found:--}"
+}
+
+while getopts D:F:hi:S:T: opt
+do
+    case "${opt}" in
+    D)  SOURCES_URL="${OPTARG}";;
+    F)  FTP_URL="${OPTARG}";;
+    h)  usage; exit 0;;
+    i)  IDS="${OPTARG}";;
+    S)  SECURITY_URL="${OPTARG}";;
+    T)  PTS_URL="${OPTARG}";;
+    *)  usage 1>&2; exit 2;;
+    esac
+done
+shift $((${OPTIND} - 1))
+
+if [ $# -ne 0 ]
+then
+    usage 1>&2
+    exit 2
+fi
+
+command -v curl > /dev/null ||
+die 'curl is required'
+
+[ -r "${IDS}" ] ||
+die "Cannot read ${IDS}"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT INT TERM HUP
+
+pattern_file="${tmp}/ids"
+grep -v -e '^#' -e '^[ 	]*$' "${IDS}" > "${pattern_file}" ||
+die "No ids in ${IDS}"
+
+fetch "${SECURITY_URL}/tracker/source-package/php-defaults" \
+    "${tmp}/page-php-defaults" ||
+die 'No security-tracker page for php-defaults'
+suite_rows "${tmp}/page-php-defaults" > "${tmp}/rows-php-defaults"
+
+present=
+for src in ${PHP_SOURCES}
+do
+    if fetch "${SECURITY_URL}/tracker/source-package/${src}" \
+	"${tmp}/page-${src}"
+    then
+	suite_rows "${tmp}/page-${src}" > "${tmp}/rows-${src}"
+	# Every existing source is in some suite; no rows at all means
+	# the page layout changed under the parser.
+	[ -s "${tmp}/rows-${src}" ] ||
+	die "Cannot parse the security-tracker page for ${src}"
+	present="${present} ${src}"
+    fi
+done
+
+for suite in ${SUITES}
+do
+    defaults="$(suite_version "${tmp}/rows-php-defaults" "${suite}" |
+	cut -f 2)"
+    [ -n "${defaults}" ] ||
+    die "No php-defaults version for ${suite}"
+    default="php$(default_branch "${defaults}")"
+
+    # The default source first, then the others in descending order.
+    order="${default}"
+    for src in ${present}
+    do
+	if [ "${src}" != "${default}" ]
+	then
+	    order="${order} ${src}"
+	fi
+    done
+
+    # The suite's default source must be there: a missing default row
+    # would otherwise just vanish from the output.
+    if [ ! -f "${tmp}/rows-${default}" ] ||
+	[ -z "$(suite_version "${tmp}/rows-${default}" "${suite}")" ]
+    then
+	die "${suite}'s default ${default} has no version in ${suite}"
+    fi
+
+    for src in ${order}
+    do
+	[ -f "${tmp}/rows-${src}" ] || continue
+
+	row="$(suite_version "${tmp}/rows-${src}" "${suite}")"
+	[ -n "${row}" ] || continue
+
+	label="${row%%"${TAB}"*}"
+	ver="${row#*"${TAB}"}"
+
+	if changelog "${src}" "${ver}" "${tmp}/changelog"
+	then
+	    facts="$(changelog_facts "${tmp}/changelog" "${ver}")"
+	else
+	    warn "No changelog for ${src} ${ver}"
+	    facts="?${TAB}?"
+	fi
+
+	if [ "${src}" = "${default}" ]
+	then
+	    flag=default
+	else
+	    flag=-
+	fi
+
+	printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+	    "${label}" "${src}" "${ver}" "${facts%%"${TAB}"*}" "${flag}" \
+	    "${facts#*"${TAB}"}"
+    done
+done

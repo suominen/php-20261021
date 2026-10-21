@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C ~/src/php-20261021 describe *)",
+      "Bash(git -C ~/src/php-20261021 diff *)",
+      "Bash(git -C ~/src/php-20261021 diff)",
+      "Bash(git -C ~/src/php-20261021 log *)",
+      "Bash(git -C ~/src/php-20261021 show *)",
+      "Bash(git -C ~/src/php-20261021 status *)",
+      "Bash(git -C ~/src/php-20261021 status)",
+      "Bash(git -C ~/src/auto-update/php-20261021 describe *)",
+      "Bash(git -C ~/src/auto-update/php-20261021 diff *)",
+      "Bash(git -C ~/src/auto-update/php-20261021 diff)",
+      "Bash(git -C ~/src/auto-update/php-20261021 log *)",
+      "Bash(git -C ~/src/auto-update/php-20261021 show *)",
+      "Bash(git -C ~/src/auto-update/php-20261021 status *)",
+      "Bash(git -C ~/src/auto-update/php-20261021 status)",
+      "Bash(git -C ~/src/netbsd/pkgsrc describe *)",
+      "Bash(git -C ~/src/netbsd/pkgsrc diff *)",
+      "Bash(git -C ~/src/netbsd/pkgsrc diff)",
+      "Bash(git -C ~/src/netbsd/pkgsrc log *)",
+      "Bash(git -C ~/src/netbsd/pkgsrc ls-tree *)",
+      "Bash(git -C ~/src/netbsd/pkgsrc show *)",
+      "Bash(git -C ~/src/netbsd/pkgsrc status *)",
+      "Bash(git -C ~/src/netbsd/pkgsrc status)",
+      "Bash(git -C ~/src/nixos/nixpkgs cat-file *)",
+      "Bash(git -C ~/src/nixos/nixpkgs describe *)",
+      "Bash(git -C ~/src/nixos/nixpkgs diff *)",
+      "Bash(git -C ~/src/nixos/nixpkgs diff)",
+      "Bash(git -C ~/src/nixos/nixpkgs log *)",
+      "Bash(git -C ~/src/nixos/nixpkgs ls-tree *)",
+      "Bash(git -C ~/src/nixos/nixpkgs merge-base *)",
+      "Bash(git -C ~/src/nixos/nixpkgs rev-parse *)",
+      "Bash(git -C ~/src/nixos/nixpkgs show *)",
+      "Bash(git -C ~/src/nixos/nixpkgs status *)",
+      "Bash(git -C ~/src/nixos/nixpkgs status)"
+    ]
+  }
+}

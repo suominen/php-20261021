@@ -1,0 +1,223 @@
+You are running headless from cron to refresh the PHP2Shell patch
+tracker (CVE-2026-109618 and CVE-2026-109619). The wrapper has already
+fetched origin and checked out the auto-update branch with origin/main
+merged forward, and has also refreshed the local nixpkgs and pkgsrc
+clones under ~/src/nixos/nixpkgs and ~/src/netbsd/pkgsrc, unless
+another tracker fetched them within the last two hours — inspect them
+via the `origin/...` remote-tracking refs without re-fetching.
+
+On 2026-10-21 PHP released 8.5.12, 8.4.27, 8.3.36, and 8.2.35, one per
+supported branch, fixing both CVEs (GHSA-w8hw-w9fx-j79w and
+GHSA-6wmf-4rv5-p3rp) with one Core change. The ids are listed in
+scripts/tracked-ids.
+
+The tracker carries ONE Patch status table: four upstream `PHP` rows
+first, then a row per (distribution release, PHP branch) pair, with the
+branch named in the Release cell. Columns: Current version (LIVE —
+refresh it on every row, every run), First fixed and Fixed since
+(STICKY — set only when a row flips), Status. Each row is judged
+against ITS OWN BRANCH's fixed release (8.2.35 / 8.3.36 / 8.4.27 /
+8.5.12). A row is Fixed only when the build carries BOTH fixes: PHP at
+or past its threshold, or backports of both. One of two is still
+":x: Vulnerable — <missing CVE> unpatched". Do not split the table per
+branch or per ecosystem, and do not add a column per CVE.
+
+Per-distro status, fixed versions, and dates all live in
+site/content/_index.md (the canonical tracker). Read it first rather
+than relying on anything cached here.
+
+Working-tree hygiene: stream a fetch through a pipe — `curl -fsSL <url> |
+grep …` — when one pass over the data is enough. If you genuinely need a
+scratch file, save it in the worktree under a `.scratch-` prefix (e.g.
+`.scratch-advisories.json`), work on it there, and `rm` it before you
+commit — never `git add` a scratch file. Write it with `curl -o
+.scratch-…` or `… | tee .scratch-… > /dev/null`: a shell redirection into
+a file (`> .scratch-…`) is refused by Claude Code even inside the
+worktree, and retrying it in another spelling is wasted effort
+(`/dev/null` is the one redirection target that passes). Read it back
+with an allowlisted reader (`jq … .scratch-x.json`, `grep … .scratch-x`).
+Don't use /tmp: Bash file reads are confined to the worktree, so a file
+there can be written but not read back. The wrapper's `git clean -fd`
+sweeps forgotten scratch on the next run, but the only thing you should
+leave behind is the edited tracker (and its commit).
+
+1. Read CLAUDE.md to learn the project conventions (including the
+   per-distro prose shape rule), then read site/content/_index.md (the
+   canonical tracker).
+
+2. Re-verify each row currently marked vulnerable (:x:), partial
+   (:warning:), or unverified (:grey_question:). Distros explicitly out
+   of scope (Rocky, Amazon, Ubuntu, Arch, Fedora, Proxmox) must NOT be
+   added — CLAUDE.md spells out the full tracked list.
+
+   a. Upstream: refresh the four PHP rows' Current version from
+      php.net's release index, one branch at a time:
+
+        curl -fsSL 'https://www.php.net/releases/?json&version=8.4'
+
+      Then read the two advisories through the GitHub API (the
+      advisory web pages are JS-only):
+
+        curl -fsSL 'https://api.github.com/repos/php/php-src/security-advisories/GHSA-w8hw-w9fx-j79w'
+
+      (and GHSA-6wmf-4rv5-p3rp). Confirm they still list the same
+      patched versions; a newer PHP point release moves Current
+      version only. If the CVE records have been published
+      (https://cveawg.mitre.org/api/cve/<CVE> stops returning 404),
+      note it in the verification log and check whether scores or
+      CWEs differ from the Summary. Check CISA's KEV catalog:
+
+        curl -fsSL https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json | jq -r '.vulnerabilities[].cveID' | grep -x -e CVE-2026-109618 -e CVE-2026-109619
+
+      A KEV listing updates the Summary's KEV row and the log.
+
+   b. Debian (suites sid, forky, trixie, bookworm) — one command:
+
+        ./scripts/debian-versions
+
+      It prints, per suite and per php8.X source the suite carries
+      (the default first): the package version, the upstream PHP
+      release from the changelog, the default flag, and tracked ids
+      backported above that release. A row at or past its branch's
+      fixed release is fixed. Below it, check the ids column and the
+      security tracker's per-CVE pages
+
+        https://security-tracker.debian.org/tracker/CVE-2026-109618
+
+      (and CVE-2026-109619); a page that 404s does not exist yet and
+      is not a verdict. One of the two is still Vulnerable. A `?` PHP value or a warning means the changelog
+      needs reading by hand — never guess a PHP release from the
+      Debian version string alone. If the script fails, record
+      nothing for Debian this run and say why in the commit message
+      (or exit without a commit if nothing else changed).
+
+      Watch for branch changes: a new php8.X source in a tracked suite
+      gets new rows; a moved default moves the "(default)" marker and
+      the row order. CLAUDE.md § "When a distribution changes branch"
+      has the rules.
+
+      When a suite flips to fixed, derive its "Fixed since" from the
+      upload that closes both CVEs — the changelog trailer date, or
+      the fixed version's first_seen (forky: the testing-migration
+      date, see CLAUDE.md):
+
+        curl -fsSL 'https://snapshot.debian.org/mr/package/php8.4/<version>/srcfiles?fileinfo=1'
+
+      Never use today's date as a stand-in.
+
+   c. NixOS channels and nixpkgs branches — one command covers all
+      seven, every php8x attribute:
+
+        ./scripts/nixpkgs-versions
+
+      It prints, per channel and attribute: the pinned PHP version, the
+      default flag (`php = …`), and tracked ids named in the
+      expression (`generic:` ones come from shared code and may be
+      gated to other branches — read the expression before trusting
+      them).
+
+      A channel whose revision the clone lacks yet prints `unresolved`
+      rows, and the script exits 3; the other channels' rows are still
+      good. Record nothing for that channel this run — it is not
+      `absent`, and it never changes a verdict — and say so in the
+      commit message (or exit without a commit if nothing else
+      changed). Any other non-zero exit is a failure: its output may
+      be cut short, so record nothing for NixOS or nixpkgs this run
+      and say why the same way.
+
+      A branch row's (master, release-26.05) "Fixed since" is the date
+      the bump LANDED on that branch — not the bump commit's own date,
+      which can be days earlier. The branch's first-parent history
+      lists the merge that brought it in (or the commit, if pushed
+      directly):
+
+        git -C ~/src/nixos/nixpkgs log --first-parent --format='%h %cd %s' --date=short origin/master -- pkgs/development/interpreters/php/
+
+      When a channel row flips to fixed, DERIVE its "Fixed since" — do
+      not use today's date, and do not reuse another channel's date.
+      First identify the commit that bumped the row's PHP branch,
+      choosing it by SUBJECT, not by recency:
+
+        git -C ~/src/nixos/nixpkgs log --format='%H %cd %s' --date=short origin/master -- pkgs/development/interpreters/php/default.nix
+
+      Then ask which published channel release first carried it:
+
+        ./scripts/nixos-first-shipped nixos-unstable <commit>
+
+      origin/master serves nixos-unstable, nixos-unstable-small and
+      nixpkgs-unstable; origin/release-26.05 serves nixos-26.05 and
+      nixos-26.05-small, which ship the backport commit — passing a
+      master SHA for them finds nothing. Record the release name the
+      script prints in the verification log; never record channel
+      git-revisions anywhere.
+
+   d. pkgsrc — one command covers lang/php82..85 on origin/trunk
+      (pkgsrc-current) and origin/pkgsrc-2026Q3:
+
+        ./scripts/pkgsrc-versions
+
+      It prints, per branch and package, the identifier a host would
+      report from `pkg_info -e` (record it verbatim), the PHP version,
+      the default flag, and tracked ids named in patches/. The version
+      decides unless ids appear, in which case read the patches.
+
+      Derive a flip's "Fixed since" from the phpversion.mk history on
+      the branch that flipped, finding the commit by CONTENT — commit
+      subjects are unreliable (quarterly pullups read "Pullup ticket
+      #NNNN ... Security fix"). For a php84 row fixed by 8.4.27:
+
+        git -C ~/src/netbsd/pkgsrc log --format='%h %ad %s' --date=short -G '^PHP84_VERSION=.*8\.4\.27' origin/pkgsrc-2026Q3 -- lang/php/phpversion.mk
+
+   What to record vs. what to leave alone:
+
+     - Current version is live: if it moved, update the cell (and
+       bump lastmod), on fixed and vulnerable rows alike. Never copy a
+       Current version value into the prose or the verification log.
+     - First fixed, Fixed since, and Status are sticky: change them
+       ONLY when the row's verdict flips. Then set First fixed to the
+       first build carrying both fixes and derive Fixed since.
+     - If nothing about a row moved, LEAVE IT ALONE.
+
+   CLAUDE.md § "Routine run scope" has the full rule.
+
+   The helpers warn on stderr when a clone looks stale. A warning is
+   not a verdict change; mention it in the commit message if you
+   commit anything.
+
+3. Edit site/content/_index.md to reflect any changes per the
+   conventions in CLAUDE.md (status badges, the per-row branch
+   threshold, live Current version, derived and sticky "First fixed"
+   and "Fixed since", and the
+   `## Verification log` update rules). Never write "no change",
+   "unchanged", or similar run-outcome prose — an entry that is still
+   accurate reports that by staying untouched. If you make content
+   changes, bump the `lastmod` date in the front-matter. If nothing
+   changed, leave the file alone — don't bump `lastmod` on a no-op run.
+
+4. If you made changes, commit them on the current branch (which is
+   `auto-update` — the wrapper has already switched to it and merged
+   origin/main forward). The permission allowlist matches command
+   prefixes, so phrase the git calls exactly as plain `git add <file>`
+   and `git commit -F -` with the message in a quoted heredoc:
+
+     git commit -a -F - <<'EOF'
+     Subject line
+
+     Body.
+     EOF
+
+   Run them from the worktree (your cwd, where the wrapper started
+   you). These forms are NOT allowlisted and will be denied: `git -C
+   <path> …` (prefix is `git -C`, not `git commit`), compound commands
+   (`cd … && git commit`), and writing the message to a temp file
+   first (`mktemp` and `cat` are not allowlisted). If a git call comes
+   back "requires approval", re-phrase it into the plain-prefix form
+   above — nothing can approve a prompt in a headless run, so a denied
+   commit otherwise strands the run's work uncommitted. Do NOT create
+   a new branch, do NOT switch branches, do NOT push, and do NOT open
+   a PR. The user merges auto-update into main manually. If nothing
+   changed, exit without committing.
+
+If you hit unexpected errors or substantive changes you can't
+confidently encode, commit your best attempt and note open questions in
+the commit message.

@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <rect width="1200" height="630" fill="#1d1e20" />
+
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#2e2e33" stroke-width="1" />
+    </pattern>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff5555" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#ffb86c" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#grid)" />
+
+  <rect width="1200" height="6" fill="#ff5555" />
+
+  <text x="80" y="150" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="900" font-size="58" fill="#dadada" letter-spacing="-1">
+    PHP2SHELL
+  </text>
+
+  <text x="80" y="210" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-weight="600" font-size="24" fill="#ff5555" letter-spacing="1">
+    CVE-2026-109618 · CVE-2026-109619
+  </text>
+
+  <text x="80" y="275" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="400" font-size="24" fill="#9b9b9d">
+    Unauthenticated RCE · CVSS 4.0 9.2
+  </text>
+  <line x1="80" y1="305" x2="105" y2="305" stroke="#9b9b9d" stroke-width="2.5" />
+  <polygon points="114,305 104,299 104,311" fill="#9b9b9d" />
+  <text x="126" y="315" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="400" font-size="24" fill="#9b9b9d">
+    Debian · pkgsrc · NixOS
+  </text>
+
+  <g transform="translate(80, 480)">
+    <rect width="380" height="50" rx="6" fill="#2e2e33" stroke="#333333" stroke-width="1.5" />
+    <text x="190" y="32" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="20" font-weight="bold" fill="#dadada" text-anchor="middle">
+      kimmo.cloud/php-20261021/
+    </text>
+  </g>
+
+  <g transform="translate(620, 100)">
+    <rect width="500" height="430" rx="12" fill="#141516" stroke="url(#glow)" stroke-width="2" />
+
+    <rect width="500" height="40" rx="12" fill="#232425" />
+    <circle cx="25" cy="20" r="6" fill="#ff5555" />
+    <circle cx="45" cy="20" r="6" fill="#ffb86c" />
+    <circle cx="65" cy="20" r="6" fill="#50fa7b" />
+    <text x="250" y="26" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="14" fill="#656668" text-anchor="middle">
+      fixed_releases.table
+    </text>
+
+    <g transform="translate(40, 70)">
+      <rect width="420" height="70" rx="6" fill="#2e2e33" stroke="#50fa7b" stroke-width="1" />
+      <text x="20" y="32" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="16" font-weight="bold" fill="#50fa7b">[ PHP 8.5 ]</text>
+      <line x1="150" y1="27" x2="178" y2="27" stroke="#9b9b9d" stroke-width="2" />
+      <polygon points="186,27 177,22 177,32" fill="#9b9b9d" />
+      <text x="198" y="32" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="16" font-weight="bold" fill="#dadada">8.5.12</text>
+      <text x="20" y="54" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="14" fill="#9b9b9d">both CVEs · with bug fixes</text>
+    </g>
+
+    <g transform="translate(40, 155)">
+      <rect width="420" height="70" rx="6" fill="#2e2e33" stroke="#50fa7b" stroke-width="1" />
+      <text x="20" y="32" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="16" font-weight="bold" fill="#50fa7b">[ PHP 8.4 ]</text>
+      <line x1="150" y1="27" x2="178" y2="27" stroke="#9b9b9d" stroke-width="2" />
+      <polygon points="186,27 177,22 177,32" fill="#9b9b9d" />
+      <text x="198" y="32" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="16" font-weight="bold" fill="#dadada">8.4.27</text>
+      <text x="20" y="54" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="14" fill="#9b9b9d">both CVEs · with bug fixes</text>
+    </g>
+
+    <g transform="translate(40, 240)">
+      <rect width="420" height="70" rx="6" fill="#2e2e33" stroke="#ffb86c" stroke-width="1" />
+      <text x="20" y="32" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="16" font-weight="bold" fill="#ffb86c">[ PHP 8.3 ]</text>
+      <line x1="150" y1="27" x2="178" y2="27" stroke="#9b9b9d" stroke-width="2" />
+      <polygon points="186,27 177,22 177,32" fill="#9b9b9d" />
+      <text x="198" y="32" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="16" font-weight="bold" fill="#dadada">8.3.36</text>
+      <text x="20" y="54" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="14" fill="#9b9b9d">both CVEs · security fixes only</text>
+    </g>
+
+    <g transform="translate(40, 325)">
+      <rect width="420" height="70" rx="6" fill="#2e2e33" stroke="#ff5555" stroke-width="1" />
+      <text x="20" y="32" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="16" font-weight="bold" fill="#ff5555">[ PHP 8.2 ]</text>
+      <line x1="150" y1="27" x2="178" y2="27" stroke="#9b9b9d" stroke-width="2" />
+      <polygon points="186,27 177,22 177,32" fill="#9b9b9d" />
+      <text x="198" y="32" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="16" font-weight="bold" fill="#dadada">8.2.35</text>
+      <text x="20" y="54" font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="14" fill="#9b9b9d">both CVEs · security fixes only</text>
+    </g>
+  </g>
+</svg>

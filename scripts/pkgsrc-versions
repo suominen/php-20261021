@@ -1,0 +1,252 @@
+#!/bin/sh
+# @(#)$KimmoSuominen$
+#
+# Report the installed package identifier, PHP version, default flag,
+# and backported advisory ids for each lang/php8x package on the
+# tracked pkgsrc branches.
+#
+# 20260925  Kimmo Suominen
+#
+
+set -eu
+
+PATH=/bin:/usr/bin:/usr/local/bin:/usr/pkg/bin
+export PATH
+
+PROG="${0##*/}"
+
+PKGSRC="${HOME}/src/netbsd/pkgsrc"
+BRANCHES='origin/trunk origin/pkgsrc-2026Q3'
+PHP_BRANCHES='85 84 83 82'
+IDS="${0%/*}/tracked-ids"
+
+die()
+{
+    echo "${PROG}: ${*}" 1>&2
+    exit 1
+}
+
+usage()
+{
+    cat <<EOF
+Usage:	${PROG} [-h] [-i file] [-r repo]
+
+Print one tab-separated line per tracked pkgsrc branch and PHP
+package, the default PHP branch first, then the others descending:
+
+	<branch> <package> <identifier> <php> <default|-> <ids|->
+
+pkgsrc keeps every PHP version in lang/php/phpversion.mk
+(PHPxx_VERSION) rather than in the package's DISTNAME, and names the
+package \${PHP_PKG_PREFIX}-\${PHP_VERSION}; a PKGREVISION set in
+lang/phpXX/Makefile appends nbN. The identifier is therefore what
+\`pkg_info -e\` reports on a host, e.g. php84-8.4.26nb1, and <php> is
+the upstream PHP release it builds.
+
+<default> marks the branch PHP_VERSION_DEFAULT selects -- the one a
+plain dependency on PHP pulls in.
+
+PKGREVISION bumps for many reasons besides security patches, so the
+last column separately lists the tracked advisory ids (one per line
+in the ids file, default: tracked-ids next to this script) named
+anywhere in the package's patches/ directory, or \`-\` when none is.
+
+A tracked quarterly branch the clone does not have yet, or a PHP
+package a branch does not carry, prints \`-\` in every field and
+\`absent\` in the last. A missing origin/trunk, or a branch without its
+default PHP package, is an error: the clone is not what it should be.
+A clone not fetched in the last 24 hours draws a warning, since every
+row may then be stale.
+
+The clone is read through its origin/... refs and is never fetched
+here; refresh it yourself, or let the auto-update wrapper do it.
+
+Options:
+-h	Show this help
+-i	File listing the tracked ids (default: ${IDS})
+-r	Path to the local pkgsrc clone (default: ${PKGSRC})
+EOF
+}
+
+# Print the value of a make variable, or nothing when unset.  The last
+# assignment wins, as in make itself: a pullup can leave the old line
+# in place above the new one, and reading the first hides the update.
+makevar()
+{
+    local mk var
+    mk="${1}"
+    var="${2}"
+
+    printf '%s\n' "${mk}" |
+    sed -n "s/^${var}[ 	]*?\{0,1\}=[ 	]*\\([^ 	]*\\).*/\\1/p" |
+    sed -n '$p'
+}
+
+# Print the tracked ids named in a package's patches on a branch,
+# comma-separated, or `-`.  -w keeps CVE-2026-6103 from matching
+# inside CVE-2026-61030.  git grep exits 1, quietly, when nothing
+# matches or patches/ does not exist.  It also exits 1 when it cannot
+# read a file, saying so only on stderr, so any error output counts as
+# a failure too -- never as "no patches".
+patch_ids()
+{
+    local branch pkg rc found
+    branch="${1}"
+    pkg="${2}"
+
+    rc=0
+    git -C "${PKGSRC}" grep -h -o -w -F -f "${pattern_file}" \
+	"${branch}" -- "${pkg}/patches/" \
+	> "${tmp}/matches" 2> "${tmp}/errors" || rc=$?
+
+    if [ "${rc}" -gt 1 ] || [ -s "${tmp}/errors" ]
+    then
+	die "git grep failed on ${pkg}/patches/ at ${branch}:" \
+	    "$(sed -n 1p "${tmp}/errors")"
+    fi
+
+    found="$(sort -u "${tmp}/matches" | paste -s -d , -)"
+    echo "${found:--}"
+}
+
+absent_row()
+{
+    printf '%s\t%s\t-\t-\t-\tabsent\n' "${1}" "${2}"
+}
+
+while getopts hi:r: opt
+do
+    case "${opt}" in
+    h)  usage; exit 0;;
+    i)  IDS="${OPTARG}";;
+    r)  PKGSRC="${OPTARG}";;
+    *)  usage 1>&2; exit 2;;
+    esac
+done
+shift $((${OPTIND} - 1))
+
+if [ $# -ne 0 ]
+then
+    usage 1>&2
+    exit 2
+fi
+
+command -v git > /dev/null ||
+die 'git is required'
+
+[ -r "${IDS}" ] ||
+die "Cannot read ${IDS}"
+
+git -C "${PKGSRC}" rev-parse --git-dir > /dev/null 2>&1 ||
+die "Not a git clone: ${PKGSRC}"
+
+# The wrapper fetches the clone before each scheduled run; a stale one
+# reports old versions as current.
+gitdir="$(git -C "${PKGSRC}" rev-parse --absolute-git-dir)"
+if [ -z "$(find "${gitdir}/FETCH_HEAD" -mmin -1440 2> /dev/null)" ]
+then
+    echo "${PROG}: warning: ${PKGSRC} not fetched in the last 24" \
+	'hours; rows may be stale' 1>&2
+fi
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT INT TERM HUP
+
+# git grep -f wants a pattern file with no comments or blank lines.
+pattern_file="${tmp}/ids"
+grep -v -e '^#' -e '^[ 	]*$' "${IDS}" > "${pattern_file}" ||
+die "No ids in ${IDS}"
+
+for branch in ${BRANCHES}
+do
+    if ! git -C "${PKGSRC}" rev-parse --verify --quiet \
+	"${branch}^{commit}" > /dev/null
+    then
+	# Only a quarterly branch may be missing: NetBSD cuts them on
+	# its own schedule and a tracker may seed the row ahead of the
+	# cut. Anything else missing means the clone is broken.
+	case "${branch}" in
+	origin/pkgsrc-*)
+	    ;;
+	*)
+	    die "No ${branch} in ${PKGSRC}"
+	    ;;
+	esac
+	for b in ${PHP_BRANCHES}
+	do
+	    absent_row "${branch}" "lang/php${b}"
+	done
+	continue
+    fi
+
+    versions="$(git -C "${PKGSRC}" show \
+	"${branch}:lang/php/phpversion.mk")" ||
+    die "Cannot read lang/php/phpversion.mk on ${branch}"
+
+    default="$(makevar "${versions}" PHP_VERSION_DEFAULT)"
+    [ -n "${default}" ] ||
+    die "No PHP_VERSION_DEFAULT on ${branch}"
+
+    # The default branch first, then the rest in descending order.
+    order="${default}"
+    for b in ${PHP_BRANCHES}
+    do
+	if [ "${b}" != "${default}" ]
+	then
+	    order="${order} ${b}"
+	fi
+    done
+
+    for b in ${order}
+    do
+	pkg="lang/php${b}"
+
+	if ! mk="$(git -C "${PKGSRC}" show "${branch}:${pkg}/Makefile" \
+	    2> /dev/null)"
+	then
+	    if [ "${b}" = "${default}" ]
+	    then
+		die "No ${pkg}, the default PHP, on ${branch}"
+	    fi
+	    absent_row "${branch}" "${pkg}"
+	    continue
+	fi
+
+	version="$(makevar "${versions}" "PHP${b}_VERSION")"
+	[ -n "${version}" ] ||
+	die "No PHP${b}_VERSION in lang/php/phpversion.mk on ${branch}"
+
+	# The identifier assumes the PKGNAME every lang/php8x uses;
+	# any other shape is reported as unknown rather than guessed.
+	pkgname="$(makevar "${mk}" PKGNAME)"
+	case "${pkgname}" in
+	'${PHP_PKG_PREFIX}-${PHP_VERSION}')
+	    id="php${b}-${version}"
+	    ;;
+	*)
+	    id='?'
+	    ;;
+	esac
+
+	pkgrevision="$(makevar "${mk}" PKGREVISION)"
+	if [ "${id}" != '?' ] && [ -n "${pkgrevision}" ] &&
+	    [ "${pkgrevision}" != 0 ]
+	then
+	    id="${id}nb${pkgrevision}"
+	fi
+
+	if [ "${b}" = "${default}" ]
+	then
+	    flag=default
+	else
+	    flag=-
+	fi
+
+	# Assign first: a die inside a substitution used as a printf
+	# argument would be swallowed, printing a row with no ids.
+	ids="$(patch_ids "${branch}" "${pkg}")"
+
+	printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+	    "${branch}" "${pkg}" "${id}" "${version}" "${flag}" "${ids}"
+    done
+done
