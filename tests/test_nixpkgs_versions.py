@@ -4,13 +4,14 @@ nixpkgs defines every PHP branch in one file,
 pkgs/development/interpreters/php/default.nix, as `phpXY = mkPhp {
 version = ...; }` blocks, and picks the default with `php = phpXY;`
 in pkgs/top-level/all-packages.nix.  Channel pointers are read from a
-file:// stand-in for channels.nixos.org.
+loopback HTTP stand-in for channels.nixos.org.
 """
 
 import os
 
-from helpers import (FixtureRepo, FixtureWeb, TempDirTest, rows, run,
-                     script)
+from helpers import (BAD_URLS, MISSING, FixtureRepo, FixtureServer,
+                     FixtureWeb, TempDirTest, planted_repo, replaced_repo,
+                     rows, run, script)
 
 SCRIPT = script("nixpkgs-versions")
 PHP_DIR = "pkgs/development/interpreters/php"
@@ -64,12 +65,14 @@ class NixpkgsVersionsTest(TempDirTest):
         super().setUp()
         self.repo = FixtureRepo(os.path.join(self.tmp, "nixpkgs"))
         self.web = FixtureWeb(os.path.join(self.tmp, "channels"))
+        self.server = FixtureServer(self.web)
+        self.addCleanup(self.server.close)
 
     def channel(self, name, sha):
         self.web.put(name + "/git-revision", sha)
 
     def lookup(self, *args):
-        return run([SCRIPT, "-i", self.ids, "-c", self.web.url(),
+        return run([SCRIPT, "-i", self.ids, "-c", self.server.url(),
                     "-r", self.repo.path] + list(args))
 
     def test_channel_and_branch_rows(self):
@@ -158,6 +161,56 @@ class NixpkgsVersionsTest(TempDirTest):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
         self.assertIn("No ids in " + empty, result.stderr)
+
+    def test_non_loopback_channel_url_is_refused(self):
+        for url in BAD_URLS:
+            with self.subTest(url=url):
+                result = run([SCRIPT, "-i", self.ids, "-c", url,
+                              "-r", self.repo.path, "nixos-unstable"])
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("Invalid base URL", result.stderr)
+
+    def test_unsafe_channel_names_are_refused(self):
+        for channel in ("-x", "--output=x", "../x", "x..y", "x;y", "x$y",
+                        "x?y", "x@y"):
+            with self.subTest(channel=channel):
+                # After --, so -x reaches the channel check, not getopts.
+                result = self.lookup("--", channel)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("Invalid channel", result.stderr)
+
+    def test_replaced_blob_does_not_run_textconv(self):
+        # A repository built from plain files: the clone's objects via
+        # alternates, and a replace ref that turns the file the helper
+        # reads into a commit, whose diff runs a textconv driver.
+        sha = self.repo.commit(tree(NEW))
+        self.repo.publish("master", sha)
+        marker = os.path.join(self.tmp, "pwned")
+        evil = replaced_repo(os.path.join(self.tmp, "evil"), marker,
+                             self.repo.path,
+                             ["refs/remotes/origin/master"], sha,
+                             PHP_DIR + "/default.nix")
+        result = self.lookup("-r", evil, "branch:master")
+        self.assertFalse(os.path.exists(marker),
+                         "the repository's textconv driver ran")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_planted_repo_config_does_not_run(self):
+        self.channel("nixos-unstable", MISSING)
+        for n, channel in enumerate(("branch:master", "nixos-unstable")):
+            with self.subTest(channel=channel):
+                # A repository and marker per path, so one regression
+                # does not fail the other subtest as well.
+                marker = os.path.join(self.tmp, "pwned-%d" % n)
+                evil = planted_repo(os.path.join(self.tmp, "evil-%d" % n),
+                                    marker,
+                                    refs=["refs/remotes/origin/master"])
+                result = self.lookup("-r", evil, channel)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(os.path.exists(marker),
+                                 "the repository's upload-pack ran")
 
     def test_longer_id_is_not_a_match(self):
         extra = {"php84": '    note = "CVE-2026-61030";\n'}

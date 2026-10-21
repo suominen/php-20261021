@@ -23,6 +23,10 @@ SOURCES_URL='https://sources.debian.org'
 SUITES='sid forky trixie bookworm'
 PHP_SOURCES='php8.5 php8.4 php8.3 php8.2'
 IDS="${0%/*}/tracked-ids"
+SECURITY_URL_DEFAULT="${SECURITY_URL}"
+PTS_URL_DEFAULT="${PTS_URL}"
+FTP_URL_DEFAULT="${FTP_URL}"
+SOURCES_URL_DEFAULT="${SOURCES_URL}"
 UPSTREAM_RE='New upstream version \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)'
 
 TAB='	'
@@ -33,13 +37,69 @@ CURL_OPTS='--connect-timeout 15 --max-time 120 --retry 2'
 
 die()
 {
-    echo "${PROG}: ${*}" 1>&2
+    printf '%s: %s\n' "${PROG}" "${*}" 1>&2
     exit 1
+}
+
+# The headless agent may run this helper with any arguments, so they
+# are checked before any request or git call. A base URL must be the
+# real one or a loopback test server, http://127.0.0.1:<port>[/path]:
+# any other would let a run send a request -- and whatever it put in
+# the URL -- to a host outside scripts/fetch-origins.
+check_base_url()
+{
+    local url default rest port path
+    url="${1}"
+    default="${2}"
+
+    if [ "${url}" = "${default}" ]
+    then
+	return 0
+    fi
+
+    case "${url}" in
+    http://127.0.0.1:*)
+	;;
+    *)
+	die "Invalid base URL: ${url}"
+	;;
+    esac
+
+    rest="${url#http://127.0.0.1:}"
+    port="${rest%%/*}"
+    path="${rest#"${port}"}"
+
+    case "${port}" in
+    ''|*[!0-9]*)
+	die "Invalid base URL: ${url}"
+	;;
+    esac
+
+    case "${path}" in
+    *[!A-Za-z0-9._/-]*)
+	die "Invalid base URL: ${url}"
+	;;
+    esac
+
+    # A local server must not redirect a run to some other host.
+    CURL_OPTS="${CURL_OPTS} --max-redirs 0"
+}
+
+# A name that reaches a URL, a git argument, a file name, or a sed
+# program: letters, digits, `.`, `_`, `+`, `-`, and the extra
+# characters in ${3}; never a leading `-` (a git option) or `..`.
+check_name()
+{
+    case "${2}" in
+    ''|-*|*..*|*[!A-Za-z0-9._+${3}-]*)
+	die "Invalid ${1}: ${2}"
+	;;
+    esac
 }
 
 warn()
 {
-    echo "${PROG}: ${*}" 1>&2
+    printf '%s: %s\n' "${PROG}" "${*}" 1>&2
 }
 
 usage()
@@ -272,7 +332,12 @@ fi
 command -v curl > /dev/null ||
 die 'curl is required'
 
-[ -r "${IDS}" ] ||
+check_base_url "${SECURITY_URL}" "${SECURITY_URL_DEFAULT}"
+check_base_url "${PTS_URL}" "${PTS_URL_DEFAULT}"
+check_base_url "${FTP_URL}" "${FTP_URL_DEFAULT}"
+check_base_url "${SOURCES_URL}" "${SOURCES_URL_DEFAULT}"
+
+[ -f "${IDS}" ] && [ -r "${IDS}" ] ||
 die "Cannot read ${IDS}"
 
 tmp="$(mktemp -d)"

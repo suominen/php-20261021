@@ -10,6 +10,7 @@ URLs, so every test drives the real script with no network access.
 import functools
 import http.server
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -22,8 +23,11 @@ SCRIPTS = os.path.join(HERE, os.pardir, "scripts")
 # A dead proxy for every scheme, so a test that forgets to point a
 # helper at its fixtures fails fast instead of reaching a real server;
 # the loopback fixture server is exempt.
+# The caller's GIT_* variables are dropped: GIT_NO_LAZY_FETCH or
+# GIT_ALLOW_PROTOCOL there would make the planted-repo tests pass
+# against an unhardened helper, and GIT_DIR would redirect every call.
 GIT_ENV = dict(
-    os.environ,
+    {k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
     http_proxy="http://127.0.0.1:9",
     https_proxy="http://127.0.0.1:9",
     HTTPS_PROXY="http://127.0.0.1:9",
@@ -57,6 +61,92 @@ GHSA-ch8v-r6jh-4vvr
 GHSA-cj93-vc83-wgqv
 GHSA-rgrp-mwpx-f6rm
 """
+
+
+# Base URLs a helper must refuse: anything but the real default or a
+# loopback test server with a plain path.
+BAD_URLS = ("https://example.invalid", "http://127.0.0.1.example",
+            "http://127.0.0.1:80@example.invalid", "http://127.0.0.1:",
+            "http://127.0.0.1:8x", "http://localhost:80", "file:///etc",
+            "http://127.0.0.1:80/a?b=1")
+
+# A commit id no fixture repository has.
+MISSING = "0123456789abcdef0123456789abcdef01234567"
+
+
+def planted_repo(path, marker, refs=()):
+    """Make a repository the agent could plant and name with -r.
+
+    It is set up as a partial clone whose upload-pack command creates
+    `marker`, and each ref in `refs` (e.g. refs/remotes/origin/trunk)
+    points at MISSING, so reading through one would start a lazy fetch
+    and run the command.  A plain git lookup is run once first to
+    prove that it does, so a git that stops lazy-fetching cannot turn
+    the tests that use it into silent passes.  Returns `path`.
+    """
+    subprocess.run(["git", "init", "-q", path], check=True, env=GIT_ENV)
+    for key, value in (
+            ("core.repositoryformatversion", "1"),
+            ("extensions.partialClone", "origin"),
+            ("remote.origin.url", path),
+            ("remote.origin.promisor", "true"),
+            ("remote.origin.uploadpack",
+             "touch %s; false" % shlex.quote(marker))):
+        subprocess.run(["git", "-C", path, "config", key, value],
+                       check=True, env=GIT_ENV)
+    for ref in refs:
+        ref_path = os.path.join(path, ".git", ref)
+        os.makedirs(os.path.dirname(ref_path), exist_ok=True)
+        with open(ref_path, "w") as f:
+            f.write(MISSING + "\n")
+    subprocess.run(["git", "-C", path, "cat-file", "-e", MISSING],
+                   capture_output=True, env=GIT_ENV)
+    if not os.path.exists(marker):
+        raise AssertionError("planted repository did not lazy-fetch")
+    os.unlink(marker)
+    return path
+
+
+def replaced_repo(path, marker, source, refs, rev, blob_path):
+    """Make a repository that turns a file read into a command run.
+
+    It borrows `source`'s objects through objects/info/alternates,
+    points each ref in `refs` at `rev`, and replaces the blob at
+    `rev:blob_path` with the commit `rev` (refs/replace), so that
+    `git show rev:blob_path` shows a commit with a patch -- and runs
+    the textconv driver that info/attributes and the config attach to
+    every path, which creates `marker`.  A plain `git show` is run
+    once to prove it.  Returns `path`.
+    """
+    subprocess.run(["git", "init", "-q", "--bare", path], check=True,
+                   env=GIT_ENV)
+    with open(os.path.join(path, "objects", "info", "alternates"),
+              "w") as f:
+        f.write(os.path.join(source, ".git", "objects") + "\n")
+    blob = subprocess.run(
+        ["git", "-C", source, "rev-parse", "%s:%s" % (rev, blob_path)],
+        check=True, capture_output=True, text=True,
+        env=GIT_ENV).stdout.strip()
+    commit = subprocess.run(
+        ["git", "-C", source, "rev-parse", rev + "^{commit}"],
+        check=True, capture_output=True, text=True,
+        env=GIT_ENV).stdout.strip()
+    for ref in list(refs) + ["refs/replace/" + blob]:
+        ref_path = os.path.join(path, ref)
+        os.makedirs(os.path.dirname(ref_path), exist_ok=True)
+        with open(ref_path, "w") as f:
+            f.write(commit + "\n")
+    with open(os.path.join(path, "info", "attributes"), "w") as f:
+        f.write("* diff=evil\n")
+    subprocess.run(["git", "-C", path, "config", "diff.evil.textconv",
+                    "touch %s; cat" % shlex.quote(marker)],
+                   check=True, env=GIT_ENV)
+    subprocess.run(["git", "-C", path, "show", "%s:%s" % (rev, blob_path)],
+                   capture_output=True, env=GIT_ENV)
+    if not os.path.exists(marker):
+        raise AssertionError("replaced blob did not run textconv")
+    os.unlink(marker)
+    return path
 
 
 def script(name):

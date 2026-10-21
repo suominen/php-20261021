@@ -15,8 +15,8 @@ real servers (missing files answer 404, as the real ones do):
 
 import os
 
-from helpers import (FixtureServer, FixtureWeb, TempDirTest, rows, run,
-                     script)
+from helpers import (BAD_URLS, FixtureServer, FixtureWeb, TempDirTest,
+                     rows, run, script)
 
 SCRIPT = script("debian-versions")
 
@@ -196,6 +196,16 @@ class DebianVersionsTest(TempDirTest):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
         self.assertIn("No ids in " + empty, result.stderr)
+
+    def test_non_loopback_urls_are_refused(self):
+        self.seed_real_layout()
+        for opt in ("-D", "-F", "-S", "-T"):
+            for url in BAD_URLS:
+                with self.subTest(opt=opt, url=url):
+                    result = self.lookup(opt, url)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(result.stdout, "")
+                    self.assertIn("Invalid base URL", result.stderr)
 
     def test_ftp_master_changelog_fallback(self):
         self.seed_real_layout()

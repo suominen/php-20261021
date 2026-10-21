@@ -8,7 +8,8 @@ DISTNAME is never the thing to read.
 
 import os
 
-from helpers import FixtureRepo, TempDirTest, rows, run, script
+from helpers import (FixtureRepo, TempDirTest, planted_repo, replaced_repo,
+                     rows, run, script)
 
 SCRIPT = script("pkgsrc-versions")
 
@@ -161,6 +162,30 @@ class PkgsrcVersionsTest(TempDirTest):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
         self.assertIn("No ids in " + empty, result.stderr)
+
+    def test_replaced_blob_does_not_run_textconv(self):
+        # See the nixpkgs test of the same name.
+        sha = self.repo.commit(tree(ALL))
+        marker = os.path.join(self.tmp, "pwned")
+        evil = replaced_repo(
+            os.path.join(self.tmp, "evil"), marker, self.repo.path,
+            ["refs/remotes/origin/trunk",
+             "refs/remotes/origin/pkgsrc-2026Q3"],
+            sha, "lang/php/phpversion.mk")
+        result = self.lookup("-r", evil)
+        self.assertFalse(os.path.exists(marker),
+                         "the repository's textconv driver ran")
+
+    def test_planted_repo_config_does_not_run(self):
+        marker = os.path.join(self.tmp, "pwned")
+        evil = planted_repo(
+            os.path.join(self.tmp, "evil"), marker,
+            refs=["refs/remotes/origin/trunk",
+                  "refs/remotes/origin/pkgsrc-2026Q3"])
+        result = self.lookup("-r", evil)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(os.path.exists(marker),
+                         "the repository's upload-pack ran")
 
     def test_missing_quarterly_branch_is_absent(self):
         self.repo.publish("trunk", self.repo.commit(tree(ALL)))

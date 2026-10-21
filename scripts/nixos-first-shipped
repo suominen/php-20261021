@@ -12,6 +12,18 @@ set -eu
 PATH=/bin:/usr/bin:/usr/local/bin
 export PATH
 
+# The clone named by -r is read, never fetched into, and its own
+# config must not decide what git runs. GIT_NO_LAZY_FETCH stops a
+# partial clone fetching a missing object (which runs the configured
+# upload-pack); GIT_ALLOW_PROTOCOL=none refuses every transport even
+# where the repository's config allows one, on a git too old for the
+# first; GIT_NO_REPLACE_OBJECTS keeps a refs/replace entry from
+# turning a file read into a commit display (see the *_git wrapper).
+GIT_NO_LAZY_FETCH=1
+GIT_ALLOW_PROTOCOL=none
+GIT_NO_REPLACE_OBJECTS=1
+export GIT_NO_LAZY_FETCH GIT_ALLOW_PROTOCOL GIT_NO_REPLACE_OBJECTS
+
 PROG="${0##*/}"
 
 BUCKET='https://nix-releases.s3.amazonaws.com'
@@ -19,14 +31,25 @@ NIXPKGS="${HOME}/src/nixos/nixpkgs"
 
 die()
 {
-    echo "${PROG}: ${*}" 1>&2
+    printf '%s: %s\n' "${PROG}" "${*}" 1>&2
     exit 1
+}
+
+# Run a read-only git command in the clone (see the GIT_* settings
+# above). Files are read with `cat-file blob`, never `show`: shown as
+# a diff, an object can run the repository's textconv driver or its
+# gpg.program. The -c settings back that up for anything that does
+# display a commit.
+nixpkgs_git()
+{
+    git -c protocol.allow=never -c core.fsmonitor=false \
+	-c log.showSignature=false -C "${NIXPKGS}" "${@}"
 }
 
 usage()
 {
     cat <<EOF
-Usage:	${PROG} [-h] [-r repo] channel commit
+Usage:	${PROG} [-h] [-b url] [-r repo] channel commit
 
 Report the date a NixOS or nixpkgs channel first published a release
 whose nixpkgs revision contains the given commit, and the name of that
@@ -41,10 +64,16 @@ descendant of the commit is reported.
 Note that a release-branch channel (nixos-26.05) ships the backport
 commit from its release-NN.NN branch, not the commit on master.
 
+The commit is a 7- to 40-digit lowercase hex id, and the channel a
+nixos-* or nixpkgs-* name of letters, digits, dots and hyphens; any
+other argument is refused before a request is made.
+
 The local nixpkgs clone must already contain the commit and the
 release revisions; fetch it first if the answer looks too late.
 
 Options:
+-b	Base URL of a loopback test bucket, http://127.0.0.1:<port>
+	(default: ${BUCKET})
 -h	Show this help
 -r	Path to the local nixpkgs clone (default: ${NIXPKGS})
 EOF
@@ -55,6 +84,14 @@ channel_prefix()
 {
     local channel
     channel="${1}"
+
+    # The prefix is put into the bucket's query string; keep it to
+    # characters that need no escaping there.
+    case "${channel}" in
+    *[!A-Za-z0-9.-]*)
+	die "Invalid channel: ${channel}"
+	;;
+    esac
 
     case "${channel}" in
     nixpkgs-unstable)
@@ -105,12 +142,22 @@ list_releases()
 
     while :
     do
-	curl -fsSL "${BUCKET}/?delimiter=/&prefix=${prefix}&marker=${marker}" \
+	curl -fsSg "${BUCKET}/?delimiter=/&prefix=${prefix}&marker=${marker}" \
 	    -o "${page}" ||
 	    die "Cannot list ${prefix}"
 
+	# Strip the prefix as a literal string: it never becomes part of
+	# a sed script, where a channel name could add commands.
 	tr '<' '\n' < "${page}" |
-	sed -n "s,^Prefix>${prefix}\(.*\)/\$,\1,p" >> "${work}/names"
+	sed -n 's,^Prefix>\(.*\)/$,\1,p' |
+	while IFS= read -r name
+	do
+	    case "${name}" in
+	    "${prefix}"?*)
+		printf '%s\n' "${name#"${prefix}"}"
+		;;
+	    esac
+	done >> "${work}/names"
 
 	case "$(tr '<' '\n' < "${page}" | sed -n 's,^IsTruncated>,,p')" in
 	true)	;;
@@ -156,11 +203,11 @@ release_contains()
     commit="${2}"
     rev="${dir##*.}"
 
-    git -C "${NIXPKGS}" cat-file -e "${rev}^{commit}" 2> /dev/null ||
+    nixpkgs_git cat-file -e "${rev}^{commit}" 2> /dev/null ||
 	die "Revision ${rev} of release ${dir} is not in ${NIXPKGS};" \
 	    'fetch the clone and retry'
 
-    git -C "${NIXPKGS}" merge-base --is-ancestor "${commit}" "${rev}"
+    nixpkgs_git merge-base --is-ancestor "${commit}" "${rev}"
 }
 
 # Print the publication date of a release, as recorded by the bucket
@@ -171,7 +218,7 @@ release_date()
     dir="${1}"
     prefix="${2}"
 
-    date="$(curl -fsSL "${BUCKET}/?prefix=${prefix}${dir}/git-revision" |
+    date="$(curl -fsSg "${BUCKET}/?prefix=${prefix}${dir}/git-revision" |
 	tr '<' '\n' |
 	sed -n 's,^LastModified>\(.*\)T.*,\1,p')" ||
 	die "Cannot read the publication date of ${dir}"
@@ -184,9 +231,10 @@ release_date()
     echo "${date}"
 }
 
-while getopts hr: opt
+while getopts b:hr: opt
 do
     case "${opt}" in
+    b)  BUCKET="${OPTARG}";;
     h)  usage; exit 0;;
     r)  NIXPKGS="${OPTARG}";;
     *)  usage 1>&2; exit 2;;
@@ -203,6 +251,36 @@ fi
 channel="${1}"
 commit="${2}"
 
+# -b exists for the tests' loopback fixture only. The headless agent
+# may pass this script any arguments, and an arbitrary base URL would
+# let it send a request -- and whatever it put in the URL -- to a host
+# outside scripts/fetch-origins.
+case "${BUCKET}" in
+https://nix-releases.s3.amazonaws.com)
+    ;;
+http://127.0.0.1:*[!0-9]*|http://127.0.0.1:)
+    die "Invalid bucket: ${BUCKET}"
+    ;;
+http://127.0.0.1:*)
+    ;;
+*)
+    die "Invalid bucket: ${BUCKET}"
+    ;;
+esac
+
+case "${commit}" in
+*[!0-9a-f]*)
+    die "Invalid commit: ${commit}"
+    ;;
+esac
+
+if [ "${#commit}" -lt 7 ] || [ "${#commit}" -gt 40 ]
+then
+    die "Invalid commit: ${commit}"
+fi
+
+prefix="$(channel_prefix "${channel}")"
+
 command -v curl > /dev/null ||
     die 'curl is required'
 
@@ -212,10 +290,8 @@ command -v git > /dev/null ||
 [ -d "${NIXPKGS}/.git" ] ||
     die "Not a git clone: ${NIXPKGS}"
 
-git -C "${NIXPKGS}" cat-file -e "${commit}^{commit}" 2> /dev/null ||
+nixpkgs_git cat-file -e "${commit}^{commit}" 2> /dev/null ||
     die "Commit ${commit} is not in ${NIXPKGS}"
-
-prefix="$(channel_prefix "${channel}")"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT INT TERM HUP

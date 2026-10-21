@@ -13,6 +13,18 @@ set -eu
 PATH=/bin:/usr/bin:/usr/local/bin:/usr/pkg/bin
 export PATH
 
+# The clone named by -r is read, never fetched into, and its own
+# config must not decide what git runs. GIT_NO_LAZY_FETCH stops a
+# partial clone fetching a missing object (which runs the configured
+# upload-pack); GIT_ALLOW_PROTOCOL=none refuses every transport even
+# where the repository's config allows one, on a git too old for the
+# first; GIT_NO_REPLACE_OBJECTS keeps a refs/replace entry from
+# turning a file read into a commit display (see the *_git wrapper).
+GIT_NO_LAZY_FETCH=1
+GIT_ALLOW_PROTOCOL=none
+GIT_NO_REPLACE_OBJECTS=1
+export GIT_NO_LAZY_FETCH GIT_ALLOW_PROTOCOL GIT_NO_REPLACE_OBJECTS
+
 PROG="${0##*/}"
 
 NIXPKGS="${HOME}/src/nixos/nixpkgs"
@@ -24,17 +36,85 @@ ATTRS='php85 php84 php83 php82'
 PHP_DIR='pkgs/development/interpreters/php'
 TOP='pkgs/top-level/all-packages.nix'
 IDS="${0%/*}/tracked-ids"
+CHANNEL_URL_DEFAULT="${CHANNEL_URL}"
 CURL_OPTS='--connect-timeout 15 --max-time 60 --retry 2'
 
 die()
 {
-    echo "${PROG}: ${*}" 1>&2
+    printf '%s: %s\n' "${PROG}" "${*}" 1>&2
     exit 1
+}
+
+# The headless agent may run this helper with any arguments, so they
+# are checked before any request or git call. A base URL must be the
+# real one or a loopback test server, http://127.0.0.1:<port>[/path]:
+# any other would let a run send a request -- and whatever it put in
+# the URL -- to a host outside scripts/fetch-origins.
+check_base_url()
+{
+    local url default rest port path
+    url="${1}"
+    default="${2}"
+
+    if [ "${url}" = "${default}" ]
+    then
+	return 0
+    fi
+
+    case "${url}" in
+    http://127.0.0.1:*)
+	;;
+    *)
+	die "Invalid base URL: ${url}"
+	;;
+    esac
+
+    rest="${url#http://127.0.0.1:}"
+    port="${rest%%/*}"
+    path="${rest#"${port}"}"
+
+    case "${port}" in
+    ''|*[!0-9]*)
+	die "Invalid base URL: ${url}"
+	;;
+    esac
+
+    case "${path}" in
+    *[!A-Za-z0-9._/-]*)
+	die "Invalid base URL: ${url}"
+	;;
+    esac
+
+    # A local server must not redirect a run to some other host.
+    CURL_OPTS="${CURL_OPTS} --max-redirs 0"
+}
+
+# A name that reaches a URL, a git argument, a file name, or a sed
+# program: letters, digits, `.`, `_`, `+`, `-`, and the extra
+# characters in ${3}; never a leading `-` (a git option) or `..`.
+check_name()
+{
+    case "${2}" in
+    ''|-*|*..*|*[!A-Za-z0-9._+${3}-]*)
+	die "Invalid ${1}: ${2}"
+	;;
+    esac
+}
+
+# Run a read-only git command in the clone (see the GIT_* settings
+# above). Files are read with `cat-file blob`, never `show`: shown as
+# a diff, an object can run the repository's textconv driver or its
+# gpg.program. The -c settings back that up for anything that does
+# display a commit.
+nixpkgs_git()
+{
+    git -c protocol.allow=never -c core.fsmonitor=false \
+	-c log.showSignature=false -C "${NIXPKGS}" "${@}"
 }
 
 warn()
 {
-    echo "${PROG}: warning: ${*}" 1>&2
+    printf '%s: warning: %s\n' "${PROG}" "${*}" 1>&2
 }
 
 usage()
@@ -179,15 +259,21 @@ die 'curl is required'
 command -v git > /dev/null ||
 die 'git is required'
 
-[ -r "${IDS}" ] ||
+check_base_url "${CHANNEL_URL}" "${CHANNEL_URL_DEFAULT}"
+for v in ${CHANNELS}
+do
+    check_name channel "${v}" '/:'
+done
+
+[ -f "${IDS}" ] && [ -r "${IDS}" ] ||
 die "Cannot read ${IDS}"
 
-git -C "${NIXPKGS}" rev-parse --git-dir > /dev/null 2>&1 ||
+nixpkgs_git rev-parse --git-dir > /dev/null 2>&1 ||
 die "Not a git clone: ${NIXPKGS}"
 
 # The wrapper fetches the clone before each scheduled run; a stale one
 # still resolves branch:... rows, just to an old tip.
-gitdir="$(git -C "${NIXPKGS}" rev-parse --absolute-git-dir)"
+gitdir="$(nixpkgs_git rev-parse --absolute-git-dir)"
 if [ -z "$(find "${gitdir}/FETCH_HEAD" -mmin -1440 2> /dev/null)" ]
 then
     warn "${NIXPKGS} not fetched in the last 24 hours;" \
@@ -211,7 +297,7 @@ do
 	# github:NixOS/nixpkgs/<branch> resolves to. It has no channel
 	# pointer -- the branch tip is the revision.
 	ref="origin/${channel#branch:}"
-	rev="$(git -C "${NIXPKGS}" rev-parse --verify --quiet \
+	rev="$(nixpkgs_git rev-parse --verify --quiet \
 	    "${ref}^{commit}")" ||
 	die "No such branch in ${NIXPKGS}: ${ref}"
 	;;
@@ -238,7 +324,7 @@ do
     # A channel pointer can move past the clone's last fetch -- the
     # wrapper skips the fetch when another tracker made one recently.
     # Report it and carry on, so the other channels still print.
-    if ! git -C "${NIXPKGS}" cat-file -e "${rev}^{commit}" 2> /dev/null
+    if ! nixpkgs_git cat-file -e "${rev}^{commit}" 2> /dev/null
     then
 	warn "Revision ${rev} of ${channel} is not in ${NIXPKGS};" \
 	    'fetch the clone and retry'
@@ -250,11 +336,11 @@ do
 	continue
     fi
 
-    versions="$(git -C "${NIXPKGS}" show \
+    versions="$(nixpkgs_git cat-file blob \
 	"${rev}:${PHP_DIR}/default.nix" 2> /dev/null)" ||
     die "Cannot read ${PHP_DIR}/default.nix at ${channel}"
 
-    generic="$(git -C "${NIXPKGS}" show \
+    generic="$(nixpkgs_git cat-file blob \
 	"${rev}:${PHP_DIR}/generic.nix" 2> /dev/null)" ||
     generic=
     generic="$(outside_blocks "${versions}")
@@ -262,7 +348,7 @@ ${generic}"
 
     # Only the top-level binding (two-space indent) sets the default;
     # a `php = ...` argument inside some package's call does not.
-    default="$(git -C "${NIXPKGS}" show "${rev}:${TOP}" 2> /dev/null |
+    default="$(nixpkgs_git cat-file blob "${rev}:${TOP}" 2> /dev/null |
 	sed -n 's/^  php = \(php[0-9][0-9]*\);[ 	]*$/\1/p' |
 	sort -u)"
     case "${default}" in

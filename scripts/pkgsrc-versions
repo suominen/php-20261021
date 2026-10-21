@@ -13,6 +13,18 @@ set -eu
 PATH=/bin:/usr/bin:/usr/local/bin:/usr/pkg/bin
 export PATH
 
+# The clone named by -r is read, never fetched into, and its own
+# config must not decide what git runs. GIT_NO_LAZY_FETCH stops a
+# partial clone fetching a missing object (which runs the configured
+# upload-pack); GIT_ALLOW_PROTOCOL=none refuses every transport even
+# where the repository's config allows one, on a git too old for the
+# first; GIT_NO_REPLACE_OBJECTS keeps a refs/replace entry from
+# turning a file read into a commit display (see the *_git wrapper).
+GIT_NO_LAZY_FETCH=1
+GIT_ALLOW_PROTOCOL=none
+GIT_NO_REPLACE_OBJECTS=1
+export GIT_NO_LAZY_FETCH GIT_ALLOW_PROTOCOL GIT_NO_REPLACE_OBJECTS
+
 PROG="${0##*/}"
 
 PKGSRC="${HOME}/src/netbsd/pkgsrc"
@@ -22,8 +34,19 @@ IDS="${0%/*}/tracked-ids"
 
 die()
 {
-    echo "${PROG}: ${*}" 1>&2
+    printf '%s: %s\n' "${PROG}" "${*}" 1>&2
     exit 1
+}
+
+# Run a read-only git command in the clone (see the GIT_* settings
+# above). Files are read with `cat-file blob`, never `show`: shown as
+# a diff, an object can run the repository's textconv driver or its
+# gpg.program. The -c settings back that up for anything that does
+# display a commit.
+pkgsrc_git()
+{
+    git -c protocol.allow=never -c core.fsmonitor=false \
+	-c log.showSignature=false -C "${PKGSRC}" "${@}"
 }
 
 usage()
@@ -95,7 +118,7 @@ patch_ids()
     pkg="${2}"
 
     rc=0
-    git -C "${PKGSRC}" grep -h -o -w -F -f "${pattern_file}" \
+    pkgsrc_git grep -h -o -w -F -f "${pattern_file}" \
 	"${branch}" -- "${pkg}/patches/" \
 	> "${tmp}/matches" 2> "${tmp}/errors" || rc=$?
 
@@ -134,15 +157,15 @@ fi
 command -v git > /dev/null ||
 die 'git is required'
 
-[ -r "${IDS}" ] ||
+[ -f "${IDS}" ] && [ -r "${IDS}" ] ||
 die "Cannot read ${IDS}"
 
-git -C "${PKGSRC}" rev-parse --git-dir > /dev/null 2>&1 ||
+pkgsrc_git rev-parse --git-dir > /dev/null 2>&1 ||
 die "Not a git clone: ${PKGSRC}"
 
 # The wrapper fetches the clone before each scheduled run; a stale one
 # reports old versions as current.
-gitdir="$(git -C "${PKGSRC}" rev-parse --absolute-git-dir)"
+gitdir="$(pkgsrc_git rev-parse --absolute-git-dir)"
 if [ -z "$(find "${gitdir}/FETCH_HEAD" -mmin -1440 2> /dev/null)" ]
 then
     echo "${PROG}: warning: ${PKGSRC} not fetched in the last 24" \
@@ -159,7 +182,7 @@ die "No ids in ${IDS}"
 
 for branch in ${BRANCHES}
 do
-    if ! git -C "${PKGSRC}" rev-parse --verify --quiet \
+    if ! pkgsrc_git rev-parse --verify --quiet \
 	"${branch}^{commit}" > /dev/null
     then
 	# Only a quarterly branch may be missing: NetBSD cuts them on
@@ -179,7 +202,7 @@ do
 	continue
     fi
 
-    versions="$(git -C "${PKGSRC}" show \
+    versions="$(pkgsrc_git cat-file blob \
 	"${branch}:lang/php/phpversion.mk")" ||
     die "Cannot read lang/php/phpversion.mk on ${branch}"
 
@@ -201,7 +224,7 @@ do
     do
 	pkg="lang/php${b}"
 
-	if ! mk="$(git -C "${PKGSRC}" show "${branch}:${pkg}/Makefile" \
+	if ! mk="$(pkgsrc_git cat-file blob "${branch}:${pkg}/Makefile" \
 	    2> /dev/null)"
 	then
 	    if [ "${b}" = "${default}" ]
