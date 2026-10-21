@@ -10,8 +10,9 @@ StandardOutput=journal
 StandardError=journal
 
 # Confine the run to what it must write.  The agent is allowed to run
-# curl, and `curl -o` writes wherever this user can write -- including
-# the wrapper in the primary checkout that ExecStart runs -- so the
+# sort and git log/show/diff, whose -o and --output write wherever
+# this user can write -- including the wrapper in the primary checkout
+# that ExecStart runs -- so the
 # in-wrapper guards are only enforceable with a kernel-level boundary
 # under them.  ProtectSystem=strict makes everything read-only, and
 # each ReadWritePaths below opens the narrowest subtree that still
@@ -25,6 +26,25 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=yes
+# Hide the credential files no run needs.  The agent's requests reach
+# only the origins in scripts/fetch-origins, but those still see
+# whatever a URL holds, and a few allowlisted readers (xq among them)
+# open any path they are given.  This is a denylist, so it narrows
+# that rather than closing it, and the headless token itself stays in
+# the environment claude runs with.  Its env file goes: systemd reads
+# EnvironmentFile before it sets up the namespace, and claude
+# authenticates from the environment, not from .credentials.json.
+# Not ~/.cfg: ~/.claude/settings.json links into it, and hiding it
+# silently drops the user-level settings and hooks.
+InaccessiblePaths=-%h/.ssh
+InaccessiblePaths=-%h/.aws
+InaccessiblePaths=-%h/.gnupg
+InaccessiblePaths=-%h/.netrc
+InaccessiblePaths=-%h/.git-credentials
+InaccessiblePaths=-%h/.cvspass
+InaccessiblePaths=-%h/.config/gh
+InaccessiblePaths=-%h/.config/claude
+InaccessiblePaths=-%h/.claude/.credentials.json
 # Claude Code writes a per-session file here on every Bash call,
 # so a fully read-only home silently breaks its Bash tool -- the
 # run then reports success having verified nothing.  Grant this

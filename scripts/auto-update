@@ -129,8 +129,8 @@ git fetch --quiet origin
 # Clear any scratch a previous run's agent left behind. Untracked
 # debris trips the dirty-tree check below, and every later run then
 # refuses to start until someone removes it by hand -- a silent
-# stall. git clean catches any name (a bare glob would miss
-# arbitrarily-named curl -o leftovers) while leaving ignored files
+# stall. git clean catches any name (a bare glob would miss a
+# leftover whose name strays from .scratch-) while leaving ignored files
 # and modified tracked files alone, so an interrupted run still
 # stops at the dirty-tree check for a human to look at.
 git clean -fd
@@ -156,19 +156,29 @@ git merge --quiet --no-edit origin/main
 # A refusal is a stop-and-look, not a transient: it means something
 # rewrote code on the branch that only the tracker content should
 # reach. Inspect the diff before clearing it.
-if ! git diff --quiet origin/main -- scripts .claude CLAUDE.md .mcp.json
+#
+# The diff sees only tracked files, so a second check refuses any
+# untracked or ignored file there too: a gitignored
+# .claude/settings.local.json survives the git clean above, and a run
+# that writes one (sort -o and git log --output can) would otherwise
+# carry its own permission grants into every later run.
+if ! git diff --quiet origin/main -- scripts .claude CLAUDE.md .mcp.json ||
+  [ -n "$(git status --porcelain --ignored --untracked-files=all -- \
+    scripts .claude CLAUDE.md .mcp.json)" ]
 then
   echo 'Worktree code/config differs from origin/main; refusing to' \
        'run. Inspect it:' 1>&2
   echo "  git -C ${WORKTREE} diff origin/main --" \
        'scripts .claude CLAUDE.md .mcp.json' 1>&2
+  echo "  git -C ${WORKTREE} status --ignored --untracked-files=all --" \
+       'scripts .claude CLAUDE.md .mcp.json' 1>&2
   exit 1
 fi
 
-# Headless run. Permission scope (Read/Edit the tracker, WebFetch and
-# curl the sources, grep/sort/jq to sift them, tee and rm for scratch
-# files, the read-only lookup helpers in scripts/, git + date for the
-# commit step) goes in --settings JSON because
+# Headless run. Permission scope (Edit the tracker, fetch and WebFetch
+# the listed sources, grep/sort/jq to sift them, scratch and rm for
+# scratch files, the read-only lookup helpers in scripts/, git + date
+# for the commit step) goes in --settings JSON because
 # --allowed-tools on the CLI silently ignores Bash patterns.
 # `default` mode under -p with no TTY refuses anything outside the
 # allowlist without prompting.
@@ -189,21 +199,40 @@ fi
 # anything else outside the worktree. The git clean above sweeps
 # any scratch files a run forgets.
 #
-# Writing a scratch file takes curl -o or tee: Claude Code refuses
+# Writing a scratch file takes the scratch helper: Claude Code refuses
 # every `> file` redirection into the worktree -- the refusal names
 # the worktree as the one allowed directory and blocks anyway (a
-# Claude Code bug, seen on 2.1.241 through 2.1.247). tee is
-# allowlisted for that. Unlike rm and the file readers (grep, sort,
-# jq, cat, head -- all probe-verified to refuse a path outside the
-# worktree even under an explicit rule), tee's target is not
-# confined: it wrote outside the cwd. So, like `curl -o`, it can
-# write anywhere this user can -- the worktree's own
-# .claude/settings.json included, with self-composed content --
-# and rests on the unit sandbox (ProtectHome=read-only plus
-# ReadWritePaths), not on the permission system. A manual run with
-# a WORKTREE argument has no unit sandbox under it, so there tee
-# and curl -o are unbounded. `sort -o FILE` is a write path on the
-# same footing.
+# Claude Code bug, seen on 2.1.241 through 2.1.247). tee used to be
+# allowlisted for that, but unlike rm and the file readers (grep,
+# sort, jq, cat, head -- all probe-verified to refuse a path outside
+# the worktree even under an explicit rule), tee's target is not
+# confined: it can write anywhere the unit lets this user write --
+# the worktree's own .claude/settings.json included, with
+# self-composed content. scratch writes only `.scratch-<name>` beside
+# the worktree's .git. Two Bash write paths remain that the
+# permission system does not confine, `sort -o FILE` and the
+# `--output=FILE` that git log, show and diff accept (probe-verified
+# on 2.1.247 to write outside the worktree). They rest on the unit
+# sandbox (ProtectHome=read-only plus ReadWritePaths), which still
+# leaves the worktree's own .claude/ and ~/.claude/projects writable;
+# the guard above catches a planted settings file on the next run. A
+# manual run with a WORKTREE argument has no sandbox under it.
+#
+# Network access goes through the fetch helper and WebFetch, both
+# limited to the origins in scripts/fetch-origins. A plain curl rule
+# cannot be narrowed: rules are command prefixes, so `curl -X GET:*`
+# is defeated by reordering flags, and even a GET carries data out in
+# its URL, its headers, or the DNS lookup of a made-up hostname, while
+# -T, -d @file, -K and file:// URLs read files Claude Code's read
+# confinement never sees. What bounds that is where a request may go;
+# fetch checks every redirect hop too. The origins list rides in from
+# CODE, like the helpers, and the WebFetch rules below are generated
+# from it, so the two cannot drift apart. There is no Read rule:
+# Claude Code reads the working directory without one, and a bare
+# Read would let the Read tool open any file this user can, such as
+# an SSH key, for a listed URL to carry away. Claude Code also
+# pre-approves WebFetch for a few documentation hosts of its own
+# (docs.python.org answered in a probe); no rule here can remove them.
 #
 # The deny rules keep the agent from rewriting its own executable
 # surface mid-run; the guard above only sees the tree as it stood at
@@ -225,7 +254,7 @@ fi
 #
 # Those helpers are the one thing the agent both runs and could write,
 # so they are invoked from CODE, never from the worktree. An Edit deny
-# rule alone would not hold: `curl -o` writes a file without going
+# rule alone would not hold: `sort -o` writes a file without going
 # through any file-editing tool. Allowlisting only the CODE path means
 # a worktree copy is not runnable even if something overwrites it.
 # The rule and the path handed to the agent are the same string, so
@@ -237,6 +266,14 @@ HELPERS="${CODE}/scripts"
 # The core list carries `xz -dc` (stdin to stdout only): snapshot.debian.org
 # serves past Sources and Packages indexes only xz-compressed, and both
 # tracker kinds date a Debian testing migration from them.
+#
+# The decompressors and rpmsort get exact rules, no `:*`: unlike grep,
+# sort, jq and tail, Claude Code does not confine their file arguments
+# to the worktree -- `zcat -f`, `gunzip -c`, `xz -dc` and `rpmsort`
+# given any path printed it (probe-verified on 2.1.247) -- and every
+# recipe uses them as bare stdin filters anyway. xq has the same gap
+# but takes a query, so it cannot be pinned the same way; it stays a
+# prefix rule.
 case "${MODE}" in
 kernel)
   # zcat/gunzip unpack the gzipped repodata and Packages indexes,
@@ -264,9 +301,9 @@ kernel)
   # the recipes use; any other spelling fails closed. A heredoc, not
   # a single-quoted literal, so ${HOME} expands in the second rule.
   mode_tools="$(cat << EOF
-    "Bash(zcat:*)",
-    "Bash(gunzip:*)",
-    "Bash(rpmsort:*)",
+    "Bash(zcat)",
+    "Bash(gunzip)",
+    "Bash(rpmsort)",
     "Bash(tail:*)",
     "Bash(xq:*)",
     "Bash(${HELPERS}/alas-cve:*)",
@@ -313,27 +350,44 @@ esac
 # (with a warning), but applies --settings regardless. A settings
 # file without permissions.allow fails the run here, on purpose --
 # better than a session in which every clone read is refused.
+#
+# The WebFetch rules come from the same CODE copy of fetch-origins
+# that scripts/fetch reads, one per listed host (WebFetch rules match
+# a domain, not a scheme or port). A missing origins file fails the
+# run here, like a missing settings file, and so does a line that is
+# not a bare scheme://host[:port] -- fetch would never match it (a
+# path, trailing blanks, a CRLF ending), so it can only be a typo.
 settings="$(jq -c --arg home "${HOME}" \
-    --slurpfile proj "${CODE}/.claude/settings.json" '
-  .permissions.allow += [
+    --slurpfile proj "${CODE}/.claude/settings.json" \
+    --rawfile origins "${HELPERS}/fetch-origins" '
+  ([$origins | split("\n")[]
+    | select(test("^\\s*(#|$)") | not)
+    | select(test("^https?://[a-z0-9.-]+(:[0-9]+)?$") | not)]) as $bad
+  | if ($bad | length) > 0
+    then error("bad fetch-origins line: \($bad[0] | @json)")
+    else . end
+  | .permissions.allow += [
     $proj[0].permissions.allow[]
     | select(startswith("Bash(git -C ~/"))
     | ., sub("~/"; $home + "/")
-  ]' << EOF
+  ] + ([
+    $origins | split("\n")[]
+    | select(test("^[a-z]+://"))
+    | sub("^[a-z]+://"; "") | sub(":[0-9]+$"; "")
+    | "WebFetch(domain:" + . + ")"
+  ] | unique)' << EOF
   {
     "permissions": {
       "allow": [
-	"Read",
 	"Edit",
-	"WebFetch",
 	"Bash(date:*)",
 	"Bash(rm:*)",
-	"Bash(curl:*)",
+	"Bash(${HELPERS}/fetch:*)",
+	"Bash(${HELPERS}/scratch:*)",
 	"Bash(grep:*)",
 	"Bash(sort:*)",
 	"Bash(jq:*)",
-	"Bash(tee:*)",
-	"Bash(xz -dc:*)",
+	"Bash(xz -dc)",
 	"Bash(${HELPERS}/nixos-first-shipped:*)",
 	"Bash(git add:*)",
 	"Bash(git commit:*)",

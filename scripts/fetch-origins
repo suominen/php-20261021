@@ -1,0 +1,30 @@
+# Origins the headless auto-update agent may contact: scripts/fetch
+# refuses any other (including as a redirect hop), and the wrapper
+# grants WebFetch only for these hosts. One scheme://host[:port] per
+# line, matched exactly -- no wildcards, no paths. Lines starting with
+# `#` are comments.
+#
+# Keep this to the sources the CLAUDE.md recipes read. A host listed
+# here can receive whatever the agent puts in a URL, so add a vendor's
+# advisory site only when a recipe needs it, and drop the sections
+# this tracker has no rows for.
+
+# Upstream PHP: release index, ChangeLog, announcements; the php-src
+# advisories through the GitHub REST API
+https://www.php.net
+https://api.github.com
+
+# CVE records and KEV
+https://cveawg.mitre.org
+https://services.nvd.nist.gov
+https://www.cisa.gov
+
+# Debian
+https://security-tracker.debian.org
+https://metadata.ftp-master.debian.org
+https://snapshot.debian.org
+https://tracker.debian.org
+
+# NixOS (channels.nixos.org redirects to releases.nixos.org)
+https://channels.nixos.org
+https://releases.nixos.org

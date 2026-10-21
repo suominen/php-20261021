@@ -1,0 +1,164 @@
+#!/bin/sh
+# @(#)$KimmoSuominen$
+#
+# Fetch one URL from a listed origin, for the headless auto-update
+# agent: its only way to make a web request.
+#
+# 20261021  Kimmo Suominen
+#
+
+set -eu
+
+PATH=/bin:/usr/bin:/usr/local/bin:/usr/pkg/bin
+export PATH
+
+PROG="${0##*/}"
+
+ORIGINS="${0%/*}/fetch-origins"
+MAX_HOPS=5
+
+die()
+{
+    echo "${PROG}: ${*}" 1>&2
+    exit 1
+}
+
+usage()
+{
+    cat <<EOF
+Usage:	${PROG} [-h] [-I] url
+
+Fetch url and write the response body to standard output, or with
+-I only the response headers (a HEAD request). The url's origin --
+its scheme and authority, e.g. https://ubuntu.com -- must appear,
+exactly, in ${ORIGINS##*/} next to this script; every redirect hop
+is checked the same way before it is followed, and an unlisted one
+fails the fetch. No other curl option can be passed.
+
+This bounds where the unattended agent can send a request: with a
+plain curl in its allowlist, any URL, header, or uploaded file
+could carry data to any host.
+
+Options:
+-h	Show this help
+-I	Send a HEAD request and print the response headers
+EOF
+}
+
+# Exit unless url's scheme://authority is a listed origin. The
+# authority may hold only lowercase host characters and a port, so
+# userinfo (@), %-escapes, and backslashes never reach curl's URL
+# parser.
+check_origin()
+{
+    local url rest authority
+
+    url="${1}"
+
+    case "${url}" in
+    http://*|https://*)
+	;;
+    *)
+	die "Not an http(s) URL: ${url}"
+	;;
+    esac
+
+    rest="${url#*://}"
+    authority="${rest%%[/?#]*}"
+    case "${authority}" in
+    ''|*[!a-z0-9.:-]*)
+	die "Malformed host in URL: ${url}"
+	;;
+    esac
+
+    if ! grep -qxF "${url%%://*}://${authority}" "${ORIGINS}"
+    then
+	die "Origin not listed in ${ORIGINS##*/}: ${url}"
+    fi
+}
+
+head=
+
+while getopts hI opt
+do
+    case "${opt}" in
+    I)  head=true;;
+    h)  usage; exit 0;;
+    *)  usage 1>&2; exit 2;;
+    esac
+done
+shift $((${OPTIND} - 1))
+
+if [ $# -ne 1 ]
+then
+    usage 1>&2
+    exit 2
+fi
+
+if [ ! -r "${ORIGINS}" ]
+then
+    die "Cannot read ${ORIGINS}"
+fi
+
+command -v curl > /dev/null ||
+die 'curl is required'
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT INT TERM HUP
+
+url="${1}"
+method=
+if ${head:-false}
+then
+    method=-I
+fi
+
+# Follow redirects here rather than with curl -L, which would follow
+# one to any host: each hop goes through check_origin before it is
+# requested. -q (first) ignores ~/.curlrc; -g keeps curl from
+# expanding {} and [] in the URL into several requests. --retry
+# covers timeouts and the transient 408/429/5xx answers (ubuntu.com
+# stalls and then answers 504), within a budget that keeps one hop
+# under about two minutes -- the agent's Bash tool kills a command at
+# two minutes by default, retries and all.
+hops=0
+while :
+do
+    check_origin "${url}"
+
+    out="$(curl -q -g -sS ${method} \
+	--proto =http,https \
+	--connect-timeout 15 \
+	--max-time 45 \
+	--retry 3 \
+	--retry-max-time 60 \
+	--retry-delay 5 \
+	--output "${tmp}/body" \
+	--write-out '%{http_code} %{redirect_url}' \
+	"${url}")" ||
+    die "Cannot fetch ${url}"
+
+    code="${out%% *}"
+    case "${code}" in
+    2??)
+	break
+	;;
+    3??)
+	url="${out#* }"
+	if [ -z "${url}" ]
+	then
+	    die "HTTP ${code} without a Location from ${1}"
+	fi
+	hops=$((${hops} + 1))
+	if [ "${hops}" -gt "${MAX_HOPS}" ]
+	then
+	    die "More than ${MAX_HOPS} redirects from ${1}"
+	fi
+	;;
+    *)
+	die "HTTP ${code} from ${url}"
+	;;
+    esac
+done
+
+cat "${tmp}/body"

@@ -94,6 +94,9 @@ follow `~/src/cve-tracker-template/LIFECYCLE.md` § "Retiring a tracker".
 │   ├── nixpkgs-versions                         # nixpkgs: php82..php85 per channel/branch
 │   ├── pkgsrc-versions                          # pkgsrc: lang/php82..85 identifiers per branch
 │   ├── tracked-ids                              # the advisory/CVE ids the helpers search for
+│   ├── fetch                                    # the agent's only web client: listed origins only
+│   ├── fetch-origins                            # the origins fetch and WebFetch may reach
+│   ├── scratch                                  # stdin -> .scratch-<name> in the worktree
 │   ├── nixos-first-shipped                      # dates a channel's flip (see below)
 │   ├── alas-cve                                 # kernel-tracker helper; unused here, carried from the template
 │   └── check-shape                              # prose and log size check (`make check`)
@@ -451,7 +454,7 @@ PHP has no local clone; the four `PHP` rows come from php.net's
 release index, which serves JSON per branch:
 
 ```sh
-curl -fsSL 'https://www.php.net/releases/?json&version=8.4'
+~/src/php-20261021/scripts/fetch 'https://www.php.net/releases/?json&version=8.4'
 ```
 
 *Current version* is its `version`; `date` is that release's date.
@@ -574,9 +577,26 @@ the worktree at all.
 
 The service unit adds a kernel-level backstop — `ProtectSystem=strict`
 with a short `ReadWritePaths` list (the worktree, the `.git`
-directories git has to update, and `~/.claude/session-env`). Each
-repository's `.git/hooks` and `.git/config` are handed back as
-`ReadOnlyPaths`.
+directories git has to update, and `~/.claude/session-env`). Without
+it the guards above are advisory: `sort -o` and `git log --output`
+write anywhere this user can, including over the wrapper the timer
+runs. Each repository's `.git/hooks` and `.git/config` are handed back
+as `ReadOnlyPaths`, and `InaccessiblePaths` hides the credentials no
+run needs (`~/.ssh`, the headless token's env file, …). The guard also
+refuses to run while an untracked or ignored file sits in `scripts`,
+`.claude`, `CLAUDE.md`, or `.mcp.json` — a gitignored
+`.claude/settings.local.json` would otherwise survive `git clean` and
+grant permissions to every later run.
+
+The network is bounded by origin, not by HTTP method: the agent has no
+`curl`, only `scripts/fetch`, which contacts just the origins in
+`scripts/fetch-origins` (redirect hops included), and WebFetch is
+granted for the same hosts. It has no `tee` either: a scratch file is
+written with `… | ~/src/php-20261021/scripts/scratch <name>`, which
+saves standard input as `.scratch-<name>` in the worktree. `xz -dc` is
+allowlisted only as a bare stdin filter. The origins list is reviewed
+code like the rest of `scripts/`; when a recipe starts reading a new
+source, add its origin there, or the run will report it unreachable.
 
 A refusal is a stop-and-look rather than something to clear
 reflexively. Inspect it with `git -C ~/src/auto-update/php-20261021
@@ -689,7 +709,7 @@ upload date, from the changelog trailer or the fixed version's
 `first_seen`:
 
 ```
-curl -fsSL 'https://snapshot.debian.org/mr/package/php8.4/<version>/srcfiles?fileinfo=1'
+~/src/php-20261021/scripts/fetch 'https://snapshot.debian.org/mr/package/php8.4/<version>/srcfiles?fileinfo=1'
 ```
 
 Both of those date the upload to unstable, which is **not** forky's
@@ -700,7 +720,7 @@ The `php8.4 <version> MIGRATED to testing` entry on the package news page
 narrows it down, but the entry can be dated a day late:
 
 ```
-curl -fsSL 'https://tracker.debian.org/pkg/php8.4/news/'
+~/src/php-20261021/scripts/fetch 'https://tracker.debian.org/pkg/php8.4/news/'
 ```
 
 Confirm the day on snapshot.debian.org, which keeps every past state of
@@ -709,7 +729,7 @@ testing. Read testing's version at a UTC timestamp `<ts>` (e.g.
 day:
 
 ```
-curl -fsSL 'https://snapshot.debian.org/archive/debian/<ts>/dists/testing/main/source/Sources.xz' | xz -dc | grep -A1500 -x 'Package: php8.4' | grep -m1 '^Version:'
+~/src/php-20261021/scripts/fetch 'https://snapshot.debian.org/archive/debian/<ts>/dists/testing/main/source/Sources.xz' | xz -dc | grep -A1500 -x 'Package: php8.4' | grep -m1 '^Version:'
 ```
 
 If snapshot does not show the migration yet, record the date the run

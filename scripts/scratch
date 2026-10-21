@@ -1,0 +1,85 @@
+#!/bin/sh
+# @(#)$KimmoSuominen$
+#
+# Copy standard input to a .scratch- file in the checkout the
+# headless auto-update agent runs in: its only way to write a file.
+#
+# 20261021  Kimmo Suominen
+#
+
+set -eu
+
+PATH=/bin:/usr/bin
+export PATH
+
+PROG="${0##*/}"
+
+die()
+{
+    echo "${PROG}: ${*}" 1>&2
+    exit 1
+}
+
+usage()
+{
+    cat <<EOF
+Usage:	${PROG} [-h] name
+
+Copy standard input to .scratch-<name> in the current directory,
+which must be the top of a git checkout. name starts with a letter
+or digit and holds only letters, digits, dots, underscores, and
+dashes, so the file cannot land anywhere but beside .git under the
+.scratch- prefix -- never over the checkout's .claude settings, its
+scripts, or a file outside it, as an allowlisted tee could.
+
+Options:
+-h	Show this help
+EOF
+}
+
+while getopts h opt
+do
+    case "${opt}" in
+    h)  usage; exit 0;;
+    *)  usage 1>&2; exit 2;;
+    esac
+done
+shift $((${OPTIND} - 1))
+
+if [ $# -ne 1 ]
+then
+    usage 1>&2
+    exit 2
+fi
+
+name="${1}"
+case "${name}" in
+[A-Za-z0-9]*)
+    ;;
+*)
+    die "Invalid name: ${name}"
+    ;;
+esac
+case "${name}" in
+*[!A-Za-z0-9._-]*)
+    die "Invalid name: ${name}"
+    ;;
+esac
+
+if [ ! -e .git ]
+then
+    die 'Not at the top of a git checkout'
+fi
+
+file=".scratch-${name}"
+if [ -h "${file}" ]
+then
+    die "Refusing to write through a symlink: ${file}"
+fi
+
+# Replace rather than rewrite: with noclobber the redirection creates
+# the file exclusively, so a link (symbolic or hard) or a FIFO planted
+# between the check above and the write is never written through.
+rm -f "${file}"
+set -C
+cat > "${file}"
