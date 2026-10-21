@@ -85,13 +85,13 @@ timer slot, and the git allowlist paths.
 - [x] `.envrc` for direnv auto-activation (`direnv allow` once).
 - [x] `README.md` documents the workflow.
 
-### 4. Publish
+### 4. Publish — first `make dist` 2026-10-21
 
 - [ ] Create `github.com/suominen/php-20261021`, add it as `origin`,
       and push `main` (a breakpoint — the user runs it).
-- [ ] First `make dist` to push to `haig` — `htdocs/php-20261021/`
+- [x] First `make dist` to push to `haig` — `htdocs/php-20261021/`
       created by rsync.
-- [ ] Verify the site renders at `https://kimmo.cloud/php-20261021/`,
+- [x] Verify the site renders at `https://kimmo.cloud/php-20261021/`,
       including the RSS feed and OG metadata.
 - [ ] Front-page entry in `~/src/kimmo.cloud/index.html` under
       "Applications", newest first.
