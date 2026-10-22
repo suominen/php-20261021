@@ -124,7 +124,7 @@ Debian versions are the apt-installable value, from the
 | PHP | 8.4 | `8.4.27` | `8.4.27` | 2026-10-21 | :white_check_mark: Fixed |
 | PHP | 8.3 | `8.3.36` | `8.3.36` | 2026-10-21 | :white_check_mark: Fixed |
 | PHP | 8.2 | `8.2.35` | `8.2.35` | 2026-10-21 | :white_check_mark: Fixed |
-| Debian | sid — `php8.4` (default) | `8.4.26-1` | — | — | :warning: Staged — 8.4.27-1 uploaded |
+| Debian | sid — `php8.4` (default) | `8.4.27-1` | `8.4.27-1` | 2026-10-22 | :white_check_mark: Fixed |
 | Debian | forky (testing) — `php8.4` (default) | `8.4.26-1` | — | — | :x: Vulnerable — needs 8.4.27 |
 | Debian | 13 (trixie) — `php8.4` (default) | `8.4.27-1~deb13u1` | `8.4.27-1~deb13u1` | 2026-10-21 | :white_check_mark: Fixed — DSA-6574-1 |
 | Debian | 12 (bookworm) — `php8.2` (default) | `8.2.35-1~deb12u1` | `8.2.35-1~deb12u1` | 2026-10-21 | :white_check_mark: Fixed — DLA-4848-1 |
@@ -144,10 +144,10 @@ Debian versions are the apt-installable value, from the
 | NixOS | `nixos-unstable-small` — `php84` | `8.4.27` | `8.4.27` | 2026-10-21 | :white_check_mark: Fixed |
 | NixOS | `nixos-unstable-small` — `php83` | `8.3.36` | `8.3.36` | 2026-10-21 | :white_check_mark: Fixed |
 | NixOS | `nixos-unstable-small` — `php82` | `8.2.34` | — | — | :x: Vulnerable — needs 8.2.35 |
-| NixOS | `nixos-26.05` — `php84` (default) | `8.4.26` | — | — | :x: Vulnerable — needs 8.4.27 |
-| NixOS | `nixos-26.05` — `php85` | `8.5.11` | — | — | :x: Vulnerable — needs 8.5.12 |
-| NixOS | `nixos-26.05` — `php83` | `8.3.35` | — | — | :x: Vulnerable — needs 8.3.36 |
-| NixOS | `nixos-26.05` — `php82` | `8.2.34` | — | — | :x: Vulnerable — needs 8.2.35 |
+| NixOS | `nixos-26.05` — `php84` (default) | `8.4.27` | `8.4.27` | 2026-10-22 | :white_check_mark: Fixed |
+| NixOS | `nixos-26.05` — `php85` | `8.5.12` | `8.5.12` | 2026-10-22 | :white_check_mark: Fixed |
+| NixOS | `nixos-26.05` — `php83` | `8.3.36` | `8.3.36` | 2026-10-22 | :white_check_mark: Fixed |
+| NixOS | `nixos-26.05` — `php82` | `8.2.35` | `8.2.35` | 2026-10-22 | :white_check_mark: Fixed |
 | NixOS | `nixos-26.05-small` — `php84` (default) | `8.4.27` | `8.4.27` | 2026-10-21 | :white_check_mark: Fixed |
 | NixOS | `nixos-26.05-small` — `php85` | `8.5.12` | `8.5.12` | 2026-10-21 | :white_check_mark: Fixed |
 | NixOS | `nixos-26.05-small` — `php83` | `8.3.36` | `8.3.36` | 2026-10-21 | :white_check_mark: Fixed |
@@ -420,17 +420,18 @@ reproduced. Most readers never need it.
 - **Debian security tracker** (per-CVE pages):
   - trixie fixed by DSA-6574-1 and bookworm by DLA-4848-1, both
     covering CVE-2026-109618 and CVE-2026-109619.
-  - sid: `php8.4` 8.4.27-1 uploaded to unstable (Debian bug 1151516),
-    first seen in the `debian` archive 2026-10-22T02:24:52Z, not yet
-    in the Sources index `scripts/debian-versions` reads.
-  - forky still listed vulnerable; it has not inherited the pending
-    sid upload.
+  - sid: `php8.4` 8.4.27-1 (Debian bug 1151516), first seen in the
+    `debian` archive 2026-10-22T02:24:52Z.
+  - forky still listed vulnerable; it has not inherited sid's
+    `8.4.27-1` upload.
 - **Debian fix dates** (changelog trailers on tracker.debian.org,
   cross-checked with snapshot.debian.org's `first_seen`):
   - trixie: the `8.4.27-1~deb13u1` upload, 2026-10-21; first seen in
     `debian-security` at 13:41 UTC.
   - bookworm: the `8.2.35-1~deb12u1` LTS upload, 2026-10-21; first
     seen in `debian-security` at 14:03 UTC.
+  - sid: the `8.4.27-1` upload, 2026-10-22; first seen in `debian` at
+    02:24 UTC.
 - **pkgsrc** (via `scripts/pkgsrc-versions` against the local clone):
   - Versions from `lang/php/phpversion.mk`; `PHP_VERSION_DEFAULT` 84
     on both branches.
@@ -460,6 +461,9 @@ reproduced. Most readers never need it.
     carries `php82` (via `scripts/nixos-first-shipped`).
   - `nixos-26.05-small`: first shipped the fix in release
     `nixos-26.05.12372.8c259fc0dd1f`, 2026-10-21 (via
+    `scripts/nixos-first-shipped`).
+  - `nixos-26.05`: first shipped the fix in release
+    `nixos-26.05.12400.da6dc0e7b260`, 2026-10-22 (via
     `scripts/nixos-first-shipped`).
 - **NixOS security tracker** ([tracker.security.nixos.org][nixos-sec])
   — a JS-rendered application, linked for readers.
