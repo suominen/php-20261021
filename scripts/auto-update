@@ -29,7 +29,7 @@
 set -eu
 # pipefail so a failure on the left of the final prompt|claude
 # pipeline (e.g. the prompt file turning unreadable mid-run) fails
-# the unit instead of feeding claude a preamble-only prompt.
+# the unit instead of feeding claude a truncated prompt.
 set -o pipefail
 
 PROG="${0##*/}"
@@ -258,8 +258,29 @@ fi
 # through any file-editing tool. Allowlisting only the CODE path means
 # a worktree copy is not runnable even if something overwrites it.
 # The rule and the path handed to the agent are the same string, so
-# they cannot drift apart.
+# they cannot drift apart: the prompt names each helper as
+# @HELPERS@/<helper>, rendered below. The path goes into the JSON
+# settings and a sed replacement unescaped, so anything beyond a
+# plain path alphabet fails the run here.
 HELPERS="${CODE}/scripts"
+
+case "${HELPERS}" in
+*[!A-Za-z0-9._/-]*)
+  echo "${PROG}: unsupported characters in helper path ${HELPERS}" 1>&2
+  exit 1
+  ;;
+esac
+
+# CLAUDE.md teaches the ~/src/<slug>/scripts/<helper> spelling for
+# interactive use, and the agent copies it as often as the prompt's.
+# Rules match the typed string, so each helper rule is emitted in that
+# spelling too -- but only when ~/src/<slug> is CODE, so both
+# spellings run the same reviewed file.
+tilde_helpers=
+if [ "$(realpath "${HOME}/src/${SLUG}" 2>/dev/null)" = "${CODE}" ]
+then
+  tilde_helpers="~/src/${SLUG}/scripts"
+fi
 
 # The core allowlist in the settings heredoc below is shared;
 # mode_tools adds only what this tracker kind's lookup recipes need.
@@ -322,7 +343,7 @@ package)
   # needs kernel mode does not have.
   # A heredoc, not a single-quoted literal, so ${HELPERS} expands here:
   # the outer settings heredoc would not re-expand it, and the rule
-  # would never match the path the preamble hands the agent.
+  # would never match the path the rendered prompt hands the agent.
   mode_tools="$(cat << EOF
     "Bash(${HELPERS}/nixpkgs-versions:*)",
     "Bash(${HELPERS}/pkgsrc-versions:*)",
@@ -358,6 +379,7 @@ esac
 # not a bare scheme://host[:port] -- fetch would never match it (a
 # path, trailing blanks, a CRLF ending), so it can only be a typo.
 settings="$(jq -c --arg home "${HOME}" \
+    --arg helpers "${HELPERS}" --arg tilde "${tilde_helpers}" \
     --slurpfile proj "${CODE}/.claude/settings.json" \
     --rawfile origins "${HELPERS}/fetch-origins" '
   ([$origins | split("\n")[]
@@ -375,7 +397,12 @@ settings="$(jq -c --arg home "${HOME}" \
     | select(test("^[a-z]+://"))
     | sub("^[a-z]+://"; "") | sub(":[0-9]+$"; "")
     | "WebFetch(domain:" + . + ")"
-  ] | unique)' << EOF
+  ] | unique)
+  | if $tilde == "" then . else .permissions.allow += [
+    .permissions.allow[]
+    | select(startswith("Bash(" + $helpers + "/"))
+    | "Bash(" + $tilde + ltrimstr("Bash(" + $helpers)
+  ] end' << EOF
   {
     "permissions": {
       "allow": [
@@ -406,22 +433,38 @@ settings="$(jq -c --arg home "${HOME}" \
 EOF
 )"
 
-# The prompt keeps saying ./scripts/<helper>; the preamble redirects
-# those to CODE without every recipe in it having to spell out a path
-# that only exists at run time.
-if [ ! -r "${CODE}/scripts/auto-update-prompt.txt" ]
+# The prompt names each helper @HELPERS@/<helper>, rendered here to
+# the allowlisted path: the agent copies recipes verbatim, so a note
+# asking it to rewrite a ./scripts/<helper> spelling was ignored often
+# enough to cost whole runs. A prompt that still holds one fails the
+# run rather than feeding the agent a recipe it cannot run.
+PROMPT="${CODE}/scripts/auto-update-prompt.txt"
+
+if [ ! -r "${PROMPT}" ]
 then
-  echo "${PROG}: cannot read ${CODE}/scripts/auto-update-prompt.txt" 1>&2
+  echo "${PROG}: cannot read ${PROMPT}" 1>&2
   exit 1
 fi
 
-{
-  echo "The verification helpers this prompt calls ./scripts/<helper>"
-  echo "live in ${HELPERS}. Invoke each one by that absolute path"
-  echo "(${HELPERS}/<helper>); the worktree copies are not permitted."
-  echo
-  cat "${CODE}/scripts/auto-update-prompt.txt"
-} |
+if grep -n -F './scripts/' "${PROMPT}" 1>&2
+then
+  echo "${PROG}: ${PROMPT} names a helper by its worktree path;" \
+       'spell it @HELPERS@/<helper>' 1>&2
+  exit 1
+fi
+
+# A mistyped token (@HELPER@) would reach the agent unrendered, so
+# anything token-shaped left after rendering fails the run as well.
+prompt="$(sed "s|@HELPERS@|${HELPERS}|g" "${PROMPT}")"
+
+if printf '%s\n' "${prompt}" | grep -n '@[A-Z_][A-Z_]*@' 1>&2
+then
+  echo "${PROG}: ${PROMPT} holds an unrendered token;" \
+       'only @HELPERS@ is substituted' 1>&2
+  exit 1
+fi
+
+printf '%s\n' "${prompt}" |
 # Session transcripts are kept: each run's session lands under
 # ~/.claude/projects/<worktree-slug>/ and is the only per-command
 # record of what the permission system allowed or denied -- the

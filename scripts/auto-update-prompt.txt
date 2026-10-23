@@ -26,17 +26,21 @@ Per-distro status, fixed versions, and dates all live in
 site/content/_index.md (the canonical tracker). Read it first rather
 than relying on anything cached here.
 
+Helpers: run every script this prompt names by exactly the path given
+(@HELPERS@/<helper>, in the primary checkout). The copies under the
+worktree's own scripts/ are not allowlisted, so calling one is refused.
+
 Fetching: curl is not allowlisted. Make every web request with
-`./scripts/fetch <url>` (body to stdout; `-I` for the response headers,
+`@HELPERS@/fetch <url>` (body to stdout; `-I` for the response headers,
 the only option it takes). It follows redirects itself and refuses any
 origin not listed in scripts/fetch-origins; WebFetch is limited to the
 same hosts. A refusal is final for this run — don't retry the URL with
 another tool or spelling; note the source as unreachable in the commit
 message instead.
 
-Working-tree hygiene: stream a fetch through a pipe — `./scripts/fetch
+Working-tree hygiene: stream a fetch through a pipe — `@HELPERS@/fetch
 <url> | grep …` — when one pass over the data is enough. If you genuinely
-need a scratch file, write it with `… | ./scripts/scratch <name>`, which
+need a scratch file, write it with `… | @HELPERS@/scratch <name>`, which
 saves standard input as `.scratch-<name>` in the worktree (<name> starts
 with a letter or digit, then letters, digits, `.`, `_`, `-`); work on it
 there and `rm` it before you commit — never `git add` a scratch file. A
@@ -44,7 +48,7 @@ shell redirection into a file (`> .scratch-…`) is refused by Claude Code
 even inside the worktree, and tee is not allowlisted; retrying either in
 another spelling is wasted effort (`/dev/null` is the one redirection
 target that passes). Decompress before saving (`… | xz -dc |
-./scripts/scratch x` — xz -dc is allowlisted only as a bare stdin
+@HELPERS@/scratch x` — xz -dc is allowlisted only as a bare stdin
 filter, never with a file argument) and read it back with an
 allowlisted reader (`grep … .scratch-x`, `jq … .scratch-x.json`).
 Don't use /tmp: Bash file reads are confined to the worktree, so a file
@@ -65,12 +69,12 @@ leave behind is the edited tracker (and its commit).
    a. Upstream: refresh the four PHP rows' Current version from
       php.net's release index, one branch at a time:
 
-        ./scripts/fetch 'https://www.php.net/releases/?json&version=8.4'
+        @HELPERS@/fetch 'https://www.php.net/releases/?json&version=8.4'
 
       Then read the two advisories through the GitHub API (the
       advisory web pages are JS-only):
 
-        ./scripts/fetch 'https://api.github.com/repos/php/php-src/security-advisories/GHSA-w8hw-w9fx-j79w'
+        @HELPERS@/fetch 'https://api.github.com/repos/php/php-src/security-advisories/GHSA-w8hw-w9fx-j79w'
 
       (and GHSA-6wmf-4rv5-p3rp). Confirm they still list the same
       patched versions; a newer PHP point release moves Current
@@ -79,13 +83,13 @@ leave behind is the edited tracker (and its commit).
       note it in the verification log and check whether scores or
       CWEs differ from the Summary. Check CISA's KEV catalog:
 
-        ./scripts/fetch https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json | jq -r '.vulnerabilities[].cveID' | grep -x -e CVE-2026-109618 -e CVE-2026-109619
+        @HELPERS@/fetch https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json | jq -r '.vulnerabilities[].cveID' | grep -x -e CVE-2026-109618 -e CVE-2026-109619
 
       A KEV listing updates the Summary's KEV row and the log.
 
    b. Debian (suites sid, forky, trixie, bookworm) — one command:
 
-        ./scripts/debian-versions
+        @HELPERS@/debian-versions
 
       It prints, per suite and per php8.X source the suite carries
       (the default first): the package version, the upstream PHP
@@ -113,14 +117,14 @@ leave behind is the edited tracker (and its commit).
       the fixed version's first_seen (forky: the testing-migration
       date, see CLAUDE.md):
 
-        ./scripts/fetch 'https://snapshot.debian.org/mr/package/php8.4/<version>/srcfiles?fileinfo=1'
+        @HELPERS@/fetch 'https://snapshot.debian.org/mr/package/php8.4/<version>/srcfiles?fileinfo=1'
 
       Never use today's date as a stand-in.
 
    c. NixOS channels and nixpkgs branches — one command covers all
       seven, every php8x attribute:
 
-        ./scripts/nixpkgs-versions
+        @HELPERS@/nixpkgs-versions
 
       It prints, per channel and attribute: the pinned PHP version, the
       default flag (`php = …`), and tracked ids named in the
@@ -154,7 +158,7 @@ leave behind is the edited tracker (and its commit).
 
       Then ask which published channel release first carried it:
 
-        ./scripts/nixos-first-shipped nixos-unstable <commit>
+        @HELPERS@/nixos-first-shipped nixos-unstable <commit>
 
       origin/master serves nixos-unstable, nixos-unstable-small and
       nixpkgs-unstable; origin/release-26.05 serves nixos-26.05 and
@@ -166,7 +170,7 @@ leave behind is the edited tracker (and its commit).
    d. pkgsrc — one command covers lang/php82..85 on origin/trunk
       (pkgsrc-current) and origin/pkgsrc-2026Q3:
 
-        ./scripts/pkgsrc-versions
+        @HELPERS@/pkgsrc-versions
 
       It prints, per branch and package, the identifier a host would
       report from `pkg_info -e` (record it verbatim), the PHP version,
