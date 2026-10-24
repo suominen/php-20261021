@@ -3,7 +3,7 @@ title: "PHP2Shell (CVE-2026-109618, CVE-2026-109619) — unauthenticated PHP RCE
 description: "PHP2Shell: two critical (CVSS 4.0 9.2) remote code execution flaws in PHP's request lifecycle, fixed in PHP 8.5.12, 8.4.27, 8.3.36, and 8.2.35 — upstream, Debian, pkgsrc, and NixOS patch status tracker"
 layout: "single"
 date: 2026-10-21
-lastmod: 2026-10-22
+lastmod: 2026-10-24
 cover:
   image: "php-20261021-tracker.png"
   alt: "PHP2Shell (CVE-2026-109618, CVE-2026-109619) — patch status tracker"
@@ -125,7 +125,7 @@ Debian versions are the apt-installable value, from the
 | PHP | 8.3 | `8.3.36` | `8.3.36` | 2026-10-21 | :white_check_mark: Fixed |
 | PHP | 8.2 | `8.2.35` | `8.2.35` | 2026-10-21 | :white_check_mark: Fixed |
 | Debian | sid — `php8.4` (default) | `8.4.27-1` | `8.4.27-1` | 2026-10-22 | :white_check_mark: Fixed |
-| Debian | forky (testing) — `php8.4` (default) | `8.4.26-1` | — | — | :x: Vulnerable — needs 8.4.27 |
+| Debian | forky (testing) — `php8.4` (default) | `8.4.27-1` | `8.4.27-1` | 2026-10-23 | :white_check_mark: Fixed |
 | Debian | 13 (trixie) — `php8.4` (default) | `8.4.27-1~deb13u1` | `8.4.27-1~deb13u1` | 2026-10-21 | :white_check_mark: Fixed — DSA-6574-1 |
 | Debian | 12 (bookworm) — `php8.2` (default) | `8.2.35-1~deb12u1` | `8.2.35-1~deb12u1` | 2026-10-21 | :white_check_mark: Fixed — DLA-4848-1 |
 | pkgsrc | `pkgsrc-current` — `php84` (default) | `php84-8.4.27` | `php84-8.4.27` | 2026-10-21 | :white_check_mark: Fixed |
@@ -422,8 +422,7 @@ reproduced. Most readers never need it.
     covering CVE-2026-109618 and CVE-2026-109619.
   - sid: `php8.4` 8.4.27-1 (Debian bug 1151516), first seen in the
     `debian` archive 2026-10-22T02:24:52Z.
-  - forky still listed vulnerable; it has not inherited sid's
-    `8.4.27-1` upload.
+  - forky: now carries `8.4.27-1`, migrated from sid.
 - **Debian fix dates** (changelog trailers on tracker.debian.org,
   cross-checked with snapshot.debian.org's `first_seen`):
   - trixie: the `8.4.27-1~deb13u1` upload, 2026-10-21; first seen in
@@ -432,6 +431,8 @@ reproduced. Most readers never need it.
     seen in `debian-security` at 14:03 UTC.
   - sid: the `8.4.27-1` upload, 2026-10-22; first seen in `debian` at
     02:24 UTC.
+  - forky: `8.4.27-1` migrated from sid to testing between
+    2026-10-23T00:00 and 24:00 UTC (via snapshot.debian.org).
 - **pkgsrc** (via `scripts/pkgsrc-versions` against the local clone):
   - Versions from `lang/php/phpversion.mk`; `PHP_VERSION_DEFAULT` 84
     on both branches.
